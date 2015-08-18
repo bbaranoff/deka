@@ -15,6 +15,17 @@
 
 #include <linux/fs.h>
 
+// XXX put into .h
+typedef struct blockspec {
+  long blockno;
+  uint64_t here;
+  uint64_t target;
+  int tbl;
+  char * bl_memaddr;
+  int j;
+} blockspec;
+
+
 /* Delta takes computed endpoints and searches for startpoints in rainbow tables. */
 
 /* *** Copyright notice ***
@@ -69,12 +80,6 @@
 #define DEBUG_PRINT 0
 
 uint64_t * fragments;
-
-/* Raise error message */
-void error(char *msg) {
-  perror(msg);
-  exit(1);
-}
 
 uint64_t CompleteEndpointSearch(const void* pDataBlock, uint64_t here,
                                         uint64_t end);
@@ -135,9 +140,10 @@ uint64_t rev(uint64_t r) {
 	return r2;
 }
 
-/* Index of blockstarts in table */
-int mBlockIndex[40][10227760+100000];
-uint64_t mPrimaryIndex[40][39952+1000];
+/* Index of blockstarts in table XXX explain */
+int mBlockIndex[40][10227760+100000]; // XXX +hotfix to prevent access outside of array=>crash
+uint64_t mPrimaryIndex[40][39952+1000]; // XXX +hotfix to prevent access outside of array=>crash
+// XXX fix properly
 
 const char * files[40] = { 
 "/mnt/tables/gsm/380.idx",
@@ -384,32 +390,6 @@ void load_idx() {
 	}
 }
 
-
-uint64_t MineABlock(long blockno, uint64_t here, uint64_t target, int tbl) {
-//    int offset = 81849336;
-    unsigned char mBuffer[4096];
-    int mDevice = open(devpaths[devs[tbl]],O_RDONLY);
-    blockno += offsets[tbl];
-    //printf("Block %i, here %llx, target %llx\n", blockno, here,target);
-    lseek(mDevice, blockno*4096, SEEK_SET );
-    size_t r = read(mDevice,mBuffer,4096);
-    assert(r==4096);
-
-//    printf("%i %x%x%x%x\n", blockno, mBuffer[0], mBuffer[1], mBuffer[100], mBuffer[200]);
-    close(mDevice);
-    return(CompleteEndpointSearch(mBuffer, here, target));
-
-}
-
-typedef struct blockspec {
-  long blockno;
-  uint64_t here;
-  uint64_t target;
-  int tbl;
-  char * bl_memaddr;
-  int j;
-} blockspec;
-
 blockspec blockq[16320];
 int blockqptr = 0;
 
@@ -418,9 +398,7 @@ int failpt = 0;
 void MineABlockNCQ(long blockno, uint64_t here, uint64_t target, int tbl, int j) {
 
 
-/*  if (j == 2453) {
-    printf("Searching for endpoint, block %lx, blockstart %lx, endpoint %lX, table %i, idx %i\n", blockno, here, target, tbl, j);
-  }*/
+// printf("Searching for endpoint, block %lx, blockstart %lx, endpoint %lX, table %i, idx %i\n", blockno, here, target, tbl, j);
 
   blockno += offsets[tbl];
 
@@ -467,7 +445,7 @@ void MineBlocksMmap() {
     }*/
 
     if(re) {
-      re=rev(ApplyIndexFunc(re, 34));
+      re=rev(ApplyIndexFunc(re, 34)); //XXX 34?
     }
 
 /* if ( j== 2453) {
