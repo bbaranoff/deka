@@ -348,7 +348,7 @@ def report(fragdb, a):
     # Whee, we found a key!
     if a[i * onefrag + 3] & np.uint64(0x02):
       key=revbits(a[i * onefrag])
-      cracked.put("found %x @ %i  #%i"%(key, old.pos, old.job))
+      cracked.put("putkey %i found %x @ %i  #%i\r\n"%(old.job, key, old.pos, old.job))
       print("cl_keyfound %i %x"%(i, key))
 
 

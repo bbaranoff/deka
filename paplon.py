@@ -108,7 +108,7 @@ def rq_getstart(req, header):
 
 def rq_putkey(req, header):
   jobnum = int(header.split()[1])
-  keyinfo = ''.join(header.split()[2:])
+  keyinfo = ' '.join(header.split()[2:])
 
   print("Found %s"%(keyinfo))
 
@@ -158,6 +158,7 @@ class ThreadedTCPRequestHandler(socketserver.BaseRequestHandler):
       if len(header.split()) > 0:
         rtype = header.split()[0]
 
+      print("DEBUG "+header)
       if rtype == "crack":
         rq_crack(self.request, header)
       elif rtype == "getkeystream":
