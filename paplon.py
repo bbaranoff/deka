@@ -158,7 +158,7 @@ class ThreadedTCPRequestHandler(socketserver.BaseRequestHandler):
       if len(header.split()) > 0:
         rtype = header.split()[0]
 
-      print("DEBUG "+header)
+#      print("DEBUG "+header)
       if rtype == "crack":
         rq_crack(self.request, header)
       elif rtype == "getkeystream":

@@ -26,12 +26,12 @@ while 1:
   jobnum = int(header.split()[0])
   plen = int(header.split()[1])
 
-  print(header)
 
   if plen == 0:
     time.sleep(1)
   else:
-
+    print(header)
+ 
     d = getdata(sock, plen)
 
     # convert to mutable bytearray, some swig magic
