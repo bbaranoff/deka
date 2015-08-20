@@ -185,6 +185,7 @@ class ThreadedTCPServer(socketserver.ThreadingMixIn, socketserver.TCPServer):
 
 # bind to socket and start accepting clients
 server = ThreadedTCPServer((HOST, PORT), ThreadedTCPRequestHandler)
+server.allow_reuse_address = True
 server.serve_forever()
 
 

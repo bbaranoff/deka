@@ -2,9 +2,12 @@
 
 # Oclvankus is a client/worker that computes chains.
 
+from __future__ import print_function
+
 import pyopencl as cl
 import numpy as np
-import time, socket, os, sys, struct, threading, queue
+import time, socket, os, sys, struct, threading
+import Queue as queue
 from collections import namedtuple
 
 # Advance functions
@@ -37,7 +40,7 @@ samplelen = 64
 samples = burstlen - samplelen + 1
 
 # how many kernels to run in parallel
-kernels = 2048
+kernels = 4095
 # slices per kernel
 slices = 64
 # fragments in cl blob
@@ -60,10 +63,14 @@ cracked = queue.Queue()
 # queue of fragments to be processed by OpenCL
 frags_q = queue.Queue()
 
+fragdb=[]
+
 # 64 ones
 mask64 = 2**64-1
 
 sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+
+x = 0
 
 # Reverse bits in integer
 def revbits(x):
@@ -72,17 +79,18 @@ def revbits(x):
 
 # Background thread for network communication
 def network_thr():
+  global frags_q, fragdb
 
   master_connect()
 
   while True:
-    print("Network!")
-    get_keystream()
-    time.sleep(1)
-    get_startpoints()
+    #print("Network!")
+    if frags_q.qsize() + len(fragdb) < kernels*slices:
+      get_keystream()
+      get_startpoints()
     put_work()
     put_cracked()
-    time.sleep(1)
+    time.sleep(0.1)
 
 
 def master_connect():
@@ -246,38 +254,35 @@ def generate_clblob():
 
 # Submit work to OpenCL & wait for results
 def krak():
+  global x
 
   (fragdb, clblob) = generate_clblob()
 
   # Generate device buffer
   a = np.zeros(len(clblob), dtype=np.uint64)
 
-  a_dev = cl.Buffer(ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=clblob)
 
   s = np.uint32(a.shape)/4
-
-  # Compile the kernel
-  FILE_NAME="slice.c"
-  f=open(FILE_NAME,"r")
-  SRC = ''.join(f.readlines())
-  f.close()
-
-  prg = cl.Program(ctx, SRC).build()
-
-  x = time.time()
 
   # How many kernels to execute
   kernels = (len(fragdb)//64+1,)
 
   # Launch the kernel
   print("Launching kernel, fragments %i, kernels %i"%(len(fragdb),kernels[0]))
+
+  print("Host lag %.3f s"%(time.time()-x))
+  x = time.time()
+
+  a_dev = cl.Buffer(ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=clblob)
   event = prg.krak(cmdq, kernels, None, a_dev, s)
   event.wait()
  
   # copy the output from the context to the Python process
   cl.enqueue_copy(cmdq, a, a_dev)
 
-  print("lag=%f"%(time.time()-x))
+  print("GPU computing: %.3f"%(time.time()-x))
+  x = time.time()
+
   report(fragdb, a)
 
 
@@ -378,6 +383,15 @@ net_thr = threading.Thread(target=network_thr, args=())
 net_thr.start()
 
 
+# Compile the kernel
+FILE_NAME="slice.c"
+f=open(FILE_NAME,"r")
+SRC = ''.join(f.readlines())
+f.close()
+
+prg = cl.Program(ctx, SRC).build()
+
+
 # Start processing
 while (1):
   if not net_thr.is_alive():
@@ -386,4 +400,4 @@ while (1):
   if not frags_q.empty():
     krak()
   else:
-    time.sleep(1)
+    time.sleep(0.1)

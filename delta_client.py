@@ -35,20 +35,24 @@ while 1:
     d = getdata(sock, plen)
 
     # convert to mutable bytearray, some swig magic
-    x = bytearray(d)
+    y = bytearray(d)
 
     #delta.submitblocks(x)
 
     # now the kernel is processing our request
 
+    x=time.time()
     print("submit")
-    delta.ncq_submit(x)
+    delta.ncq_submit(y)
+    print("%f s"%(time.time()-x))
+    x=time.time()
 
     print("process")
-    delta.ncq_read(x)
+    delta.ncq_read(y)
+    print("%f s"%(time.time()-x))
 
     sendascii(sock, "putstart %i %i\r\n"%(jobnum, plen))
 
-    sendblob(sock, x)
+    sendblob(sock, y)
 
 
