@@ -181,11 +181,10 @@ class ThreadedTCPRequestHandler(socketserver.BaseRequestHandler):
         rq_unknown(self.request, header)
 
 class ThreadedTCPServer(socketserver.ThreadingMixIn, socketserver.TCPServer):
-  pass
+  allow_reuse_address = True
 
 # bind to socket and start accepting clients
 server = ThreadedTCPServer((HOST, PORT), ThreadedTCPRequestHandler)
-server.allow_reuse_address = True
 server.serve_forever()
 
 
