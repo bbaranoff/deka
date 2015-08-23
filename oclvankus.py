@@ -7,7 +7,7 @@ from __future__ import print_function
 import pyopencl as cl
 import numpy as np
 import time, socket, os, sys, struct, threading
-import Queue as queue
+import queue as queue
 from collections import namedtuple
 
 # Advance functions
