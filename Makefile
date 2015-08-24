@@ -1,7 +1,7 @@
 CC = gcc
 SWIG = swig3.0
 
-CFLAGS = -Wall -lm -std=gnu99 -O3
+CFLAGS = -Wall -lm -std=gnu99 -O3 # -g -ggdb3
 
 all: delta libvankus
 
