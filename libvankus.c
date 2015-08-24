@@ -15,7 +15,11 @@
 
 #include <linux/fs.h>
 
+#include <limits.h>
+
 #include "tables.h"
+
+#include "revbits.h"
 
 typedef struct __attribute__((__packed__)) fragment_s {
   uint64_t prng;
@@ -35,8 +39,8 @@ typedef struct fragdbe {
 } fragdbe;
 
 #define BURSTFRAGS 16320
-#define QSIZE 5
-#define CLBLOBSIZE (10*BURSTFRAGS)
+#define QSIZE 120
+#define CLBLOBSIZE 4095*64
 #define ONEFRAG 4
 #define BMSIZE (BURSTFRAGS*sizeof(fragment))
 
@@ -45,14 +49,17 @@ fragdbe fragdb[CLBLOBSIZE];
 
 int fragdbptr = 0;
 
-int qstart, qstop;
+int solptr;
+
+#define SOLSIZE (100)
+char solutions[10][SOLSIZE];
 
 uint64_t mytables[] = {380, 220, 100,108,116,124,132,140,148,156,164,172,180,188,196,204,212,230,238,250,260,268,276,292,324,332,340,348,356,364,372,388,396,404,412,420,428,436,492,500};
 
 int getfirstfree() {
   int i;
   for(i=0; i<QSIZE; i++) {
-    if(burstq[(i+qstop) % QSIZE] == NULL) {
+    if(burstq[i] == NULL) {
       return i;
     }
   }
@@ -62,7 +69,7 @@ int getfirstfree() {
 int getnumfree() {
   int fr = 0;
   for(int i=0; i<QSIZE; i++) {
-    if(burstq[(i+qstop) % QSIZE] == NULL) {
+    if(burstq[i] == NULL) {
       fr++;
     }
   }
@@ -81,16 +88,6 @@ int burst_load(char * cbuf, int size) {
   burstq[idx] = (fragment**) malloc(BMSIZE);
 
   memcpy(burstq[idx], cbuf, BMSIZE);
-
-  printf("bload\n");
-
-/*  for(int i = 0; i<16320*9; i++) {
-    printf("%lx ", ((uint64_t*)burstq[idx])[i]);
-    if(i%9) 
-      printf("\n");
-  }*/
-
-  qstop = idx;
 
   return 0;
 
@@ -112,6 +109,40 @@ int fincond(fragment f) {
   return 0;
 }
 
+int cmpint (const void * a, const void * b) {
+   return ( *(int*)a - *(int*)b );
+}
+
+int getprio(int idx) {
+
+  int jobnums[QSIZE];
+
+  /* QSIZE is about 30, so we do not care about time complexity. */
+
+  for(int i=0; i< QSIZE; i++) {
+    if(burstq[i] == NULL) {
+      jobnums[i] = INT_MAX;
+      continue;
+    }
+    fragment* arr = (fragment*) burstq[i];
+    jobnums[i] = arr[i].job;
+  }
+
+  qsort(jobnums, QSIZE, sizeof(int), cmpint);
+
+  for(int i=0; i < QSIZE; i++) {
+    if(burstq[i] != NULL) {
+      fragment* arr = (fragment*) burstq[i];
+      if(jobnums[idx] == arr[0].job) {
+        return i;
+      }
+    }
+  }
+
+  return -1;
+
+}
+
 int frag_clblob(char * cbuf, int size) {
 
   fragdbptr = 0;
@@ -120,22 +151,22 @@ int frag_clblob(char * cbuf, int size) {
 
   for(int i = 0; i<QSIZE; i++) {
 
-    int bp = (i+qstart) % QSIZE;
+    int bp = getprio(i);
+
+    if(bp < 0) {
+      break;
+    }
 
     if(burstq[bp] != NULL) {
       fragment* arr = (fragment*) burstq[bp];
 
       for(int j = 0; j<BURSTFRAGS; j++) {
 
-        if(fragdbptr > CLBLOBSIZE) {
+        if(fragdbptr >= CLBLOBSIZE) {
           return fragdbptr;
         }
 
         fragment f = arr[j];
-
-        if(f.table == 220 && f.pos == 5) {
-          printf("frag %lu\n", f.prng);
-        }
 
         if(fincond(f) == 0) {
 
@@ -205,7 +236,15 @@ void report(char * cbuf, int size) {
     }
 
     if (a[i * ONEFRAG + 3] & 0x2ULL) {
-      printf("FOUND %lX (%lX) fdbpos %i\n",a[i * ONEFRAG + 0], a[i * ONEFRAG + 3], i);
+      uint64_t state = rev(a[i * ONEFRAG + 0]);
+
+      snprintf(solutions[solptr], SOLSIZE, "FOUND %lX fdbpos %i", state, i);
+
+      //printf("to solq: %s\n", solutions[solptr]);
+
+      printf("FOUND %lX fdbpos %i\n",state, i);
+
+      solptr++;
     }
 
   }
@@ -218,12 +257,13 @@ int pop_result(char * cbuf, int size) {
 
   uint64_t * a = (uint64_t *)cbuf;
 
-  printf("pop result\n");
+  //printf("pop result %p %p %p\n", burstq[0], burstq[1], burstq[2]);
 
+  //printf("Missing");
   for(int i = 0; i < QSIZE; i++) {
     int missing = 0;
+    int chall = 0;
 
-    printf("%i:%p ", i, burstq[i]);
 
     if(burstq[i] != 0) {
 
@@ -231,22 +271,20 @@ int pop_result(char * cbuf, int size) {
 
       for(int j = 0; j < BURSTFRAGS; j++) {
         fragment f = arr[j];
-        if((fincond(arr[j]) == 0) || (f.challenge != 0UL)) {
+        if((fincond(f) == 0)) {
           //printf("No cond for %i:%i %lx %lx %lx %lx %lx\n", i, j, f.prng, f.job, f.pos, f.table, f.color);
           missing++;
         }
+        if(f.challenge != 0) {
+          chall++;
+        }
       }
-      printf("Missing %i\n", missing);
+      //printf(" %i", missing);
       if(missing == 0) {
 
         fragment* arr = (fragment*) burstq[i];
         for(int b = 0; b < BURSTFRAGS; b++) {
           fragment f = arr[b];
-
-          if(f.table == 220 && f.pos == 5) {
-            printf("fin report %lu\n", f.prng);
-          }
-
           a[b] = f.prng;
         }
 
@@ -254,15 +292,31 @@ int pop_result(char * cbuf, int size) {
 
         free(burstq[i]);
         burstq[i] = 0;
+        if(chall > 0) {
+          return -1;
+        }
         return jobnum;
       }
     }
   }
+  //printf("\n");
 
   return -1;
 
 }
 
 
+int pop_solution(char * cbuf, int size) {
+
+  if (solptr > 0) {
+    solptr--;
+    //printf("sol: %s .. %s\n", solutions[0], solutions[1]);
+    memcpy(cbuf, solutions[solptr], SOLSIZE);
+    return 0;
+  } else {
+    return -1;
+  }
+
+}
 
 

@@ -45,9 +45,9 @@ samplelen = 64
 samples = burstlen - samplelen + 1
 
 # how many kernels to run in parallel
-kernels = 4095
+kernels = 8190
 # slices per kernel
-slices = 64
+slices = 32
 # fragments in cl blob
 clblobfrags = kernels * slices
 
@@ -92,12 +92,17 @@ def network_thr():
 
   while True:
     #print("Network!")
-    if mywork < 10:
+
+    n = libvankus.getnumfree()
+
+    print("%i free slots"%n)
+
+    if n > 2:
       get_keystream()
       get_startpoints()
     put_work()
     put_cracked()
-    time.sleep(1)
+    time.sleep(0.3)
 
 
 def master_connect():
@@ -155,7 +160,7 @@ def put_result(command, jobnum, data):
 
   sendascii(sock, "%s %i %i\r\n"%(command, jobnum, len(data)*8))
 
-  print("len data %i"%len(data))
+  #print("len data %i"%len(data))
 
   mywork -= 1
   sendblob(sock, data)
@@ -164,7 +169,7 @@ def put_result(command, jobnum, data):
 def put_dps(burst, n):
   global mywork
 
-  print("reporting job %i len %i"%(n, len(burst)))
+  #print("reporting job %i len %i"%(n, len(burst)))
 
   mywork -= 1
 
@@ -172,8 +177,17 @@ def put_dps(burst, n):
 
 def put_cracked():
 
-  while not cracked.empty():
-    put_result("putkey", 666, bytes(cracked.get(), "ascii"))
+  buf = np.zeros(100, dtype=np.uint8)
+
+  n = libvankus.pop_solution(buf)
+
+  if n >= 0:
+
+    print(" ++ Sending %s"%toascii(buf.tostring()))
+
+    sendascii(sock, "putkey 666 %s\r\n"%toascii(buf.tostring()))
+
+    #put_result("putkey", 666, buf.tostring())
   
 
 
@@ -264,7 +278,7 @@ def generate_clblob():
 
   n = libvankus.frag_clblob(clblob)
 
-  print("Got %i clblob"%n)
+  #print("Got %i clblob"%n)
 
   #for u in clblob:
   #  print("%X"%u)
@@ -278,6 +292,7 @@ def krak():
   (n,clblob) = generate_clblob()
 
   if n == 0:
+    time.sleep(0.3)
     return
 
   #wow=datetime.now().strftime("%Y-%m-%dT%H-%M-%S.%f")[:23]
@@ -297,16 +312,16 @@ def krak():
   s = np.uint32(a.shape)/4
 
   # How many kernels to execute
-  kernels = (n//(64)+1,)
+  kernelstoe = (n//(32)+1,)
 
   # Launch the kernel
-  print("Launching kernel, fragments %i, kernels %i"%(len(fragdb),kernels[0]))
+  print("Launching kernel, fragments %i, kernels %i"%(n,kernelstoe[0]))
 
   print("Host lag %.3f s"%(time.time()-x))
   x = time.time()
 
   a_dev = cl.Buffer(ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=clblob)
-  event = prg.krak(cmdq, kernels, None, a_dev, s)
+  event = prg.krak(cmdq, kernelstoe, None, a_dev, s)
   event.wait()
  
   # copy the output from the context to the Python process
@@ -347,8 +362,6 @@ def put_work():
 
   n = libvankus.pop_result(a)
 
-  print("Popped %i"%n)
-
   if n >= 0:
     put_dps(a, n)
 
@@ -375,4 +388,4 @@ while (1):
   #if not frags_q.empty():
   krak()
  # else:
-  time.sleep(0.3)
+  #time.sleep(0.3)
