@@ -19,9 +19,9 @@ echo 'kernel void krak(global ulong *buf, ulong slices) {
   private long i,j,z;
   private ulong diff,res;
 
-  if(me >= 2048) {
+/*  if(me >= 2048) {
     return;
-  }
+  }*/
 
   //private ulong flags = buf[myptr + i*4 + 3];
 
