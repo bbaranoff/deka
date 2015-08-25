@@ -45,7 +45,7 @@ samplelen = 64
 samples = burstlen - samplelen + 1
 
 # how many kernels to run in parallel
-kernels = 8190
+kernels = 4095
 # slices per kernel
 slices = 32
 # fragments in cl blob
@@ -183,9 +183,18 @@ def put_cracked():
 
   if n >= 0:
 
-    print(" ++ Sending %s"%toascii(buf.tostring()))
+    s = buf.tostring()
+    pieces = s.split()
 
-    sendascii(sock, "putkey 666 %s\r\n"%toascii(buf.tostring()))
+    if pieces[0] == b'Found':
+
+      jobnum = int(pieces[4][1:])
+
+      sendascii(sock, "putkey %i %s\r\n"%(jobnum, toascii(s.rstrip(b'\x00'))))
+
+    if pieces[0] == b'crack':
+      jobnum = int(pieces[1][1:])
+      sendascii(sock, "finished %i\r\n"%jobnum)
 
     #put_result("putkey", 666, buf.tostring())
   

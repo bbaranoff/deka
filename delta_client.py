@@ -17,6 +17,8 @@ sock.connect((HOST, PORT))
 
 delta.delta_init()
 
+solved=0
+
 while 1:
 
   sock.sendall(bytes("getdps\r\n", "ascii"))
@@ -54,5 +56,9 @@ while 1:
     sendascii(sock, "putstart %i %i\r\n"%(jobnum, plen))
 
     sendblob(sock, y)
+
+    solved += 1
+    if solved > 700:
+      sys.exit(0)
 
 

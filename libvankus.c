@@ -39,8 +39,8 @@ typedef struct fragdbe {
 } fragdbe;
 
 #define BURSTFRAGS 16320
-#define QSIZE 120
-#define CLBLOBSIZE 4095*64
+#define QSIZE 80
+#define CLBLOBSIZE 4095*32
 #define ONEFRAG 4
 #define BMSIZE (BURSTFRAGS*sizeof(fragment))
 
@@ -238,7 +238,7 @@ void report(char * cbuf, int size) {
     if (a[i * ONEFRAG + 3] & 0x2ULL) {
       uint64_t state = rev(a[i * ONEFRAG + 0]);
 
-      snprintf(solutions[solptr], SOLSIZE, "FOUND %lX fdbpos %i", state, i);
+      snprintf(solutions[solptr], SOLSIZE, "Found %016lX @ %li  #%li  (table:%li)", state, arr[e.pos].pos, arr[e.pos].job, arr[e.pos].table);
 
       //printf("to solq: %s\n", solutions[solptr]);
 
@@ -289,6 +289,11 @@ int pop_result(char * cbuf, int size) {
         }
 
         int jobnum = arr[0].job; // for historical reasons, there is a jobnum in every fragment
+
+        if(chall > 0) {
+          snprintf(solutions[solptr], SOLSIZE, "crack #%i took", jobnum);
+          solptr++;
+        }
 
         free(burstq[i]);
         burstq[i] = 0;
