@@ -2,18 +2,23 @@
 
 # Oclvankus is a client/worker that computes chains.
 
-from __future__ import print_function
+#from __future__ import print_function
 
 import pyopencl as cl
 import numpy as np
 import time, socket, os, sys, struct, threading
-import queue as queue
+import queue #as queue
 from collections import namedtuple
 
 # Advance functions
 from tables import rft
 
 from libdeka import *
+
+import libvankus
+
+import pickle
+from datetime import datetime
 
 HOST, PORT = "localhost", 1578
 
@@ -42,7 +47,7 @@ samples = burstlen - samplelen + 1
 # how many kernels to run in parallel
 kernels = 4095
 # slices per kernel
-slices = 64
+slices = 32
 # fragments in cl blob
 clblobfrags = kernels * slices
 
@@ -72,6 +77,8 @@ sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
 x = 0
 
+mywork = 0
+
 # Reverse bits in integer
 def revbits(x):
   return int(bin(x)[2:].zfill(64)[::-1], 2)
@@ -85,12 +92,17 @@ def network_thr():
 
   while True:
     #print("Network!")
-    if frags_q.qsize() + len(fragdb) < kernels*slices:
+
+    n = libvankus.getnumfree()
+
+    print("%i free slots"%n)
+
+    if n > 2:
       get_keystream()
       get_startpoints()
     put_work()
     put_cracked()
-    time.sleep(0.1)
+    time.sleep(0.3)
 
 
 def master_connect():
@@ -100,6 +112,7 @@ def master_connect():
 
 # Ask our master for keystream to crack
 def get_keystream():
+  global mywork
 
   sock.sendall(bytes("getkeystream\r\n", "ascii"))
 
@@ -112,11 +125,13 @@ def get_keystream():
 
   keystream = l.split()[1]
 
+  mywork += 1
   part_add(jobnum, keystream)
 
 
 # Ask our master for startpoints to finish
 def get_startpoints():
+  global mywork
 
   sock.sendall(bytes("getstart\r\n", "ascii"))
 
@@ -132,34 +147,56 @@ def get_startpoints():
 
   d = getdata(sock, plen)
 
+  mywork += 1
+
+  print("Adding start")
+
   complete_add(jobnum, keystream, d)
 
 
 # Post data package to our master
 def put_result(command, jobnum, data):
+  global mywork
 
-  sendascii(sock, "%s %i %i\r\n"%(command, jobnum, len(data)))
+  sendascii(sock, "%s %i %i\r\n"%(command, jobnum, len(data)*8))
 
+  #print("len data %i"%len(data))
+
+  mywork -= 1
   sendblob(sock, data)
 
 # Post computed endpoints to our master
-def put_dps(frags):
+def put_dps(burst, n):
+  global mywork
 
-  jobnum = frags[0].job
+  #print("reporting job %i len %i"%(n, len(burst)))
 
-  data = bytes()
+  mywork -= 1
 
-  for frag in frags:
-    data += struct.pack("<1Q", frag.prng)
-
-  print("reporting job %i len %i"%(jobnum, len(data)))
-
-  put_result("putdps", jobnum, data)
+  put_result("putdps", n, burst)
 
 def put_cracked():
 
-  while not cracked.empty():
-    put_result("putkey", 666, bytes(cracked.get(), "ascii"))
+  buf = np.zeros(100, dtype=np.uint8)
+
+  n = libvankus.pop_solution(buf)
+
+  if n >= 0:
+
+    s = buf.tostring()
+    pieces = s.split()
+
+    if pieces[0] == b'Found':
+
+      jobnum = int(pieces[4][1:])
+
+      sendascii(sock, "putkey %i %s\r\n"%(jobnum, toascii(s.rstrip(b'\x00'))))
+
+    if pieces[0] == b'crack':
+      jobnum = int(pieces[1][1:])
+      sendascii(sock, "finished %i\r\n"%jobnum)
+
+    #put_result("putkey", 666, buf.tostring())
   
 
 
@@ -172,6 +209,10 @@ def part_add(jobnum, bdata):
   # initialize empty target
   partjobs[jobnum] = []
 
+  fragbuf = np.zeros(9*16320, dtype=np.uint64)
+
+  ind = 0
+
   # Generate keystream samples for all possible fragment combinations
   for table in mytables:
     for pos in range(0, samples):
@@ -180,19 +221,22 @@ def part_add(jobnum, bdata):
         sample = (bint >> (samples-pos-1)) & mask64
         #print("bint %X, sample %X, shift %i"%(bint, sample, (samples-pos-1)))
 
-        fragment = Fragment(prng = sample,
-                            job = jobnum,
-                            pos = pos,
-                            iters = 0,
-                            table = table,
-                            color = color,
-                            start = color,
-                            stop = 8,
-                            challenge = 0)
+        fragbuf[ind] = sample
+        fragbuf[ind+1] = jobnum
+        fragbuf[ind+2] = pos
+        fragbuf[ind+3] = 0
+        fragbuf[ind+4] = table
+        fragbuf[ind+5] = color
+        fragbuf[ind+6] = color
+        fragbuf[ind+7] = 8
+        fragbuf[ind+8] = 0
+
+        ind += 9
 
         #print("Adding ",fragment)
-        frags_q.put(fragment)
+        #frags_q.put(fragment)
 
+  libvankus.burst_load(fragbuf)
 
 # Add complete job (from the starting point towards the keystream sample)
 def complete_add(jobnum, keystream, blob):
@@ -200,6 +244,10 @@ def complete_add(jobnum, keystream, blob):
   startpoints = struct.unpack("<%iQ"%(len(blob)/8), blob)
 
   bint = int(keystream,2)
+
+  fragbuf = np.zeros(9*16320, dtype=np.uint64)
+
+  ind = 0
 
   # Generate keystream samples for all possible combinations, however,
   # using the sample as a challenge lookup and the starting point as PRNG input
@@ -209,18 +257,21 @@ def complete_add(jobnum, keystream, blob):
 
         sample = (bint >> (samples-pos-1)) & mask64
 
-        fragment = Fragment(prng = startpoints[abs_idx(pos, table, color)],
-                            job = jobnum,
-                            pos = pos,
-                            iters = 0,
-                            table = table,
-                            color = 0,
-                            start = 0,
-                            stop = color+1,
-                            challenge = sample)
+        fragbuf[ind] = startpoints[abs_idx(pos, table, color)]
+        fragbuf[ind+1] = jobnum
+        fragbuf[ind+2] = pos
+        fragbuf[ind+3] = 0
+        fragbuf[ind+4] = table
+        fragbuf[ind+5] = 0
+        fragbuf[ind+6] = 0
+        fragbuf[ind+7] = color+1
+        fragbuf[ind+8] = sample
 
-        if fragment.prng != 0:
-          frags_q.put(fragment)
+        ind += 9
+
+        #if fragment[0] != 0:
+          #frags_q.put(fragment)
+  libvankus.burst_load(fragbuf)
 
 
 # Translate color index to a reduction function value
@@ -231,32 +282,37 @@ def getrf(table, color):
 # Generate blob to be sent to OpenCL
 def generate_clblob():
 
-  # Database to keep on host for further lookups
-  fragdb = []
-
   # Raw OpenCL buffer binary
   clblob = np.zeros(clblobfrags * onefrag, dtype=np.uint64)
 
-  # Fill it both with fragments
-  for i in range(0,clblobfrags):
-    if frags_q.empty():
-      break
-    fragment = frags_q.get()
-    #print("Kernel -> ",fragment)
-    fragdb.append(fragment)
+  n = libvankus.frag_clblob(clblob)
 
-    clblob[i * onefrag + 0] = fragment.prng
-    clblob[i * onefrag + 1] = getrf(fragment.table, fragment.color)
-    clblob[i * onefrag + 2] = fragment.challenge
+  #print("Got %i clblob"%n)
 
-  return (fragdb, clblob)
-
+  #for u in clblob:
+  #  print("%X"%u)
+  #sys.exit(0)
+  return (n,clblob)
 
 # Submit work to OpenCL & wait for results
 def krak():
   global x
 
-  (fragdb, clblob) = generate_clblob()
+  (n,clblob) = generate_clblob()
+
+  if n == 0:
+    time.sleep(0.3)
+    return
+
+  #wow=datetime.now().strftime("%Y-%m-%dT%H-%M-%S.%f")[:23]
+  #print("Saving blob to %s"%wow)
+
+  #o=open(wow+'.clblob', 'wb')
+  #pickle.dump(clblob, o, pickle.HIGHEST_PROTOCOL)
+  #o.close()
+
+  #for lo in clblob:
+  #  print("%X"%lo)
 
   # Generate device buffer
   a = np.zeros(len(clblob), dtype=np.uint64)
@@ -265,16 +321,16 @@ def krak():
   s = np.uint32(a.shape)/4
 
   # How many kernels to execute
-  kernels = (len(fragdb)//64+1,)
+  kernelstoe = (n//(32)+1,)
 
   # Launch the kernel
-  print("Launching kernel, fragments %i, kernels %i"%(len(fragdb),kernels[0]))
+  print("Launching kernel, fragments %i, kernels %i"%(n,kernelstoe[0]))
 
   print("Host lag %.3f s"%(time.time()-x))
   x = time.time()
 
   a_dev = cl.Buffer(ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=clblob)
-  event = prg.krak(cmdq, kernels, None, a_dev, s)
+  event = prg.krak(cmdq, kernelstoe, None, a_dev, s)
   event.wait()
  
   # copy the output from the context to the Python process
@@ -283,78 +339,24 @@ def krak():
   print("GPU computing: %.3f"%(time.time()-x))
   x = time.time()
 
-  report(fragdb, a)
+  #o=open(wow+'.a', 'wb')
+  #pickle.dump(a, o, pickle.HIGHEST_PROTOCOL)
+  #o.close()
+
+  #for lo in a:
+  #  print("%08X"%lo)
+
+  report(a)
 
 
 # Process blob returned from OpenCL
-def report(fragdb, a):
+def report( a):
 
-  for i in range(0, len(fragdb)):
+  libvankus.report(a)
 
-    old = fragdb[i]
-    # If we reached end of color
-    if a[i * onefrag + 3] & np.uint64(0x01):
-
-      #print("cl_endpoint %i %x"%(i, a[i * onefrag]))
-
-      # There are still colors to go - update color and resubmit
-      if old.color < old.stop - 1:
-        # We need to XOR the PRNG with the next RF, as the slice machine does
-        # one more XOR than we need so they just cancel out
-        fragment = Fragment(
-                    prng = a[i * onefrag] ^ np.uint64(getrf(old.table, old.color+1)),
-                    job = old.job,
-                    pos = old.pos,
-                    iters = 0,
-                    table = old.table,
-                    color = old.color+1,
-                    start = old.start,
-                    stop = 8,
-                    challenge = old.challenge)
-
-        frags_q.put(fragment)
-
-      # There are no more colors - final endpoint was reached
-      else:
-        fragment = Fragment(prng = a[i * onefrag],
-                    job = old.job,
-                    pos = old.pos,
-                    iters = 0,
-                    table = old.table,
-                    color = old.color,
-                    start = old.start,
-                    stop = 8,
-                    challenge = old.challenge)
-
-        # If this was a partial lookup, we will forward it to master,
-        # otherwise the challenge was not found in table and we silently discard it.
-        if fragment.challenge == 0:
-          partjobs[old.job].append(fragment)
-
-
-    # We have not reached distinguished point, so we need to iterate more.
-    else:
-      fragment = Fragment(prng = a[i * onefrag],
-                  job = old.job,
-                  pos = old.pos,
-                  iters = old.iters + 1,
-                  table = old.table,
-                  color = old.color,
-                  start = old.start,
-                  stop = 8,
-                  challenge = old.challenge)
-
-      if fragment.iters < maxiters:
-        frags_q.put(fragment)
-      else:
-        print("Kicking out frag %X with RF %i:%i after %i iters - cipher loop?"
-               %(fragment.prng, fragment.table, fragment.color, maxiters))
-
-    # Whee, we found a key!
-    if a[i * onefrag + 3] & np.uint64(0x02):
-      key=revbits(a[i * onefrag])
-      cracked.put("putkey %i found %x @ %i  #%i\r\n"%(old.job, key, old.pos, old.job))
-      print("cl_keyfound %i %x"%(i, key))
+  #key=revbits(a[i * onefrag])
+  #cracked.put("putkey %i found %x @ %i  #%i (table:%i)\r\n"%(old[1], key, old[2], old[1], old[4]))
+  #print("cl_keyfound %i %x"%(i, key))
 
 
 # Return absolute index of fragment in burst blob
@@ -364,18 +366,13 @@ def abs_idx(pos, table, color):
 
 # Post finished work to our master
 def put_work():
-  k = list(partjobs.keys())
-  for i in k:
-    if len(partjobs[i]) >= len(mytables) * samples * colors: # the job is finished
-      reportjob(i)
 
+  a = np.zeros(16320, dtype=np.uint64)
 
-# Post single finished job to our master
-def reportjob(idx):
-  partjobs[idx].sort(key=lambda x: abs_idx(x.pos, x.table, x.start))
-  put_dps(partjobs[idx])
-  #print("Reporting finish")
-  partjobs.pop(idx)
+  n = libvankus.pop_result(a)
+
+  if n >= 0:
+    put_dps(a, n)
 
 
 # Start the net thread
@@ -397,7 +394,7 @@ while (1):
   if not net_thr.is_alive():
     print("Network thread died :-(")
     sys.exit(1)
-  if not frags_q.empty():
-    krak()
-  else:
-    time.sleep(0.1)
+  #if not frags_q.empty():
+  krak()
+ # else:
+  #time.sleep(0.3)
