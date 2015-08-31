@@ -423,6 +423,9 @@ void MineABlockNCQ(long blockno, uint64_t here, uint64_t target, int tbl, int j)
 }
 
 void MineBlocksMmap() {
+
+  int mined = 0;
+
   for(int i = 0; i<blockqptr; i++) {
     char * maddr = blockq[i].bl_memaddr;
 
@@ -437,6 +440,7 @@ void MineBlocksMmap() {
 
     if(re) {
       re=rev(ApplyIndexFunc(re, 34)); //XXX 34?
+      mined++;
     }
 
 /* if ( j== 2453) {
@@ -446,6 +450,9 @@ void MineBlocksMmap() {
 
     madvise(maddr, 4096, MADV_DONTNEED);
   }
+
+  printf("mined %i\n", mined);
+
   blockqptr = 0;
 }
 
@@ -510,22 +517,10 @@ void delta_init() {
   mmap_devices();
   load_idx();
 
-  printf("MMAP: ");
-  for(int i = 0; i<4; i++) {
-    printf("%p ",storages[i]);
-  }
-  printf("\n");
-
 }
 
 
 void ncq_submit(char * cbuf, int size) {
-
-  printf("MMAP: ");
-  for(int i = 0; i<4; i++) {
-    printf("%p ",storages[i]);
-  }
-  printf("\n");
 
   fragments = (uint64_t *)cbuf;
 
@@ -552,12 +547,6 @@ void ncq_submit(char * cbuf, int size) {
 }
 
 void ncq_read(char * cbuf, int size) {
-  printf("MMAP: ");
-  for(int i = 0; i<4; i++) {
-    printf("%p ",storages[i]);
-  }
-  printf("\n");
-
   MineBlocksMmap();
 }
 
