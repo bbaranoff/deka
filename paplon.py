@@ -44,6 +44,7 @@ JobT = Struct("Job", "num time stage keystream blob plaintext")
 def Job(time=time.time(), stage="submitted", keystream="", blob=bytes(), plaintext=[]):
   global jobptr
   jobptr += 1
+  time = time.time()
   return JobT(jobptr-1, time, stage, keystream, blob, plaintext)
 
 jobs = {}
