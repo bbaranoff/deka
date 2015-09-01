@@ -32,6 +32,8 @@ jobstages = [ "submitted",   # user submitted keystream
 
 jobptr = 0
 
+lock = threading.Lock()
+
 reportqs=[]
 
 def report_thr(msgq, sock):
@@ -46,8 +48,10 @@ def report_thr(msgq, sock):
 JobT = Struct("Job", "num time stage keystream blob plaintext")
 def Job(stime=time.time(), stage="submitted", keystream="", blob=bytes(), plaintext=[]):
   global jobptr
+  lock.acquire()
   jobptr += 1
   stime = time.time()
+  lock.release()
   return JobT(jobptr-1, stime, stage, keystream, blob, plaintext)
 
 jobs = {}
@@ -95,14 +99,18 @@ def rq_getkeystream(req, header):
   """
   Return keystream for endpoint computation
   """
+
+  lock.acquire()
   jobn = getfjob("submitted")
 
   if jobn == None:
+    lock.release()
     sendascii(req, "-1 0\r\n")
   else:
     job = jobs[jobn]
-    sendascii(req, "%i %s\r\n"%(job.num, job.keystream))
     jobs[jobn].stage = "dpsearch"
+    lock.release()
+    sendascii(req, "%i %s\r\n"%(job.num, job.keystream))
 
 def rq_putdps(req, header):
   """
@@ -120,15 +128,18 @@ def rq_getdps(req, header):
   """
   Send computed endpoints for table lookup
   """
+  lock.acquire()
   jobn = getfjob("endpoints")
 
   if jobn == None:
+    lock.release()
     sendascii(req, "-1 0\r\n")
   else:
     job = jobs[jobn]
+    jobs[jobn].stage = "startsearch"
+    lock.release()
     sendascii(req, "%i %i\r\n"%(job.num, len(job.blob)))
     sendblob(req, job.blob)
-    jobs[jobn].stage = "startsearch"
 
 def rq_putstart(req, header):
   """
@@ -146,15 +157,19 @@ def rq_getstart(req, header):
   """
   Send startpoints for chain recovery
   """
+
+  lock.acquire()
   jobn = getfjob("startpoints")
 
   if jobn == None:
+    lock.release()
     sendascii(req, "-1 0\r\n")
   else:
     job = jobs[jobn]
+    jobs[jobn].stage = "collsearch"
+    lock.release()
     sendascii(req, "%i %s %i\r\n"%(job.num, job.keystream, len(job.blob)))
     sendblob(req, job.blob)
-    jobs[jobn].stage = "collsearch"
 
 def rq_putkey(req, header):
   """
@@ -184,12 +199,15 @@ def rq_stats(req, header):
   """
   global jobs
 
+  lock.acquire()
   cnts = {}
   for stage in jobstages:
     cnts[stage] = 0
 
   for job in jobs:
     cnts[jobs[job].stage] += 1
+
+  lock.release()
 
   for stage in jobstages:
     sendascii(req, "%s: %i\r\n"%(stage, cnts[stage]))
