@@ -17,6 +17,8 @@ import libvankus
 import pickle
 from datetime import datetime
 
+from vankusconf import mytables
+
 HOST, PORT = "localhost", 1578
 
 mf = cl.mem_flags
@@ -28,10 +30,6 @@ ctx = cl.create_some_context()
 #ctx = cl.Context(devices=my_gpu_devices)
 cmdq = cl.CommandQueue(ctx)
 
-# tables we have
-# yeah it's in this silly order
-mytables = [380, 220, 100,108,116,124,132,140,148,156,164,172,180,188,196,204,212,230,238,250,260,268,276,292,324,332,340,348,356,364,372,388,396,404,412,420,428,436,492,500]
-table_offset = -100
 # how many colors are there in each table
 colors = 8
 # length of one GSM burst
@@ -51,22 +49,6 @@ clblobfrags = kernels * slices
 # size of one fragment in longs (we need fragment + RF + challenge + flags)
 onefrag = 4
 
-# how many times to submit one chain to OpenCL
-maxiters = 20
-
-Fragment = namedtuple("Fragment", "prng job pos iters table start color stop challenge")
-
-# finished partial submits to be forwarded to our master
-partjobs = {}
-
-# cracked keys to be forwarded to our master
-cracked = queue.Queue()
-
-# queue of fragments to be processed by OpenCL
-frags_q = queue.Queue()
-
-fragdb=[]
-
 # 64 ones
 mask64 = 2**64-1
 
@@ -83,7 +65,6 @@ def revbits(x):
 
 # Background thread for network communication
 def network_thr():
-  global frags_q, fragdb
 
   master_connect()
 
@@ -172,6 +153,7 @@ def put_dps(burst, n):
 
   put_result("putdps", n, burst)
 
+# Post cracked keys or finished jobs to our master
 def put_cracked():
 
   buf = np.zeros(100, dtype=np.uint8)
@@ -193,8 +175,6 @@ def put_cracked():
       jobnum = int(pieces[1][1:])
       sendascii(sock, "finished %i\r\n"%jobnum)
 
-    #put_result("putkey", 666, buf.tostring())
-  
 
 
 # Add partial job (reconstructing the keyspace to the nearest endpoint)
@@ -203,10 +183,7 @@ def part_add(jobnum, bdata):
   # add fragments to queue
   bint = int(bdata,2)
 
-  # initialize empty target
-  partjobs[jobnum] = []
-
-  fragbuf = np.zeros(9*16320, dtype=np.uint64)
+  fragbuf = np.zeros(9*colors*tables*samples, dtype=np.uint64)
 
   ind = 0
 
@@ -242,7 +219,7 @@ def complete_add(jobnum, keystream, blob):
 
   bint = int(keystream,2)
 
-  fragbuf = np.zeros(9*16320, dtype=np.uint64)
+  fragbuf = np.zeros(9*colors*tables*samples, dtype=np.uint64)
 
   ind = 0
 
@@ -266,15 +243,7 @@ def complete_add(jobnum, keystream, blob):
 
         ind += 9
 
-        #if fragment[0] != 0:
-          #frags_q.put(fragment)
   libvankus.burst_load(fragbuf)
-
-
-# Translate color index to a reduction function value
-def getrf(table, color):
-  return rft[table + table_offset][color]
-
 
 # Generate blob to be sent to OpenCL
 def generate_clblob():
@@ -284,11 +253,6 @@ def generate_clblob():
 
   n = libvankus.frag_clblob(clblob)
 
-  #print("Got %i clblob"%n)
-
-  #for u in clblob:
-  #  print("%X"%u)
-  #sys.exit(0)
   return (n,clblob)
 
 # Submit work to OpenCL & wait for results
@@ -300,16 +264,6 @@ def krak():
   if n == 0:
     time.sleep(0.3)
     return
-
-  #wow=datetime.now().strftime("%Y-%m-%dT%H-%M-%S.%f")[:23]
-  #print("Saving blob to %s"%wow)
-
-  #o=open(wow+'.clblob', 'wb')
-  #pickle.dump(clblob, o, pickle.HIGHEST_PROTOCOL)
-  #o.close()
-
-  #for lo in clblob:
-  #  print("%X"%lo)
 
   # Generate device buffer
   a = np.zeros(len(clblob), dtype=np.uint64)
@@ -336,24 +290,7 @@ def krak():
   print("GPU computing: %.3f"%(time.time()-x))
   x = time.time()
 
-  #o=open(wow+'.a', 'wb')
-  #pickle.dump(a, o, pickle.HIGHEST_PROTOCOL)
-  #o.close()
-
-  #for lo in a:
-  #  print("%08X"%lo)
-
-  report(a)
-
-
-# Process blob returned from OpenCL
-def report( a):
-
   libvankus.report(a)
-
-  #key=revbits(a[i * onefrag])
-  #cracked.put("putkey %i found %x @ %i  #%i (table:%i)\r\n"%(old[1], key, old[2], old[1], old[4]))
-  #print("cl_keyfound %i %x"%(i, key))
 
 
 # Return absolute index of fragment in burst blob
@@ -391,7 +328,4 @@ while (1):
   if not net_thr.is_alive():
     print("Network thread died :-(")
     sys.exit(1)
-  #if not frags_q.empty():
   krak()
- # else:
-  #time.sleep(0.3)
