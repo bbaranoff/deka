@@ -11,3 +11,4 @@ libvankus.py
 libvankus_wrap.c
 libvankus_wrap.o
 slice.c
+*.log
