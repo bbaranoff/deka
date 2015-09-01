@@ -35,9 +35,13 @@ jobptr = 0
 reportqs=[]
 
 def report_thr(msgq, sock):
+  """
+  Reporting thread sending messages to client
+  """
   while 1:
     s = msgq.get()
     sendascii(sock, s)
+
 
 JobT = Struct("Job", "num time stage keystream blob plaintext")
 def Job(stime=time.time(), stage="submitted", keystream="", blob=bytes(), plaintext=[]):
@@ -48,7 +52,11 @@ def Job(stime=time.time(), stage="submitted", keystream="", blob=bytes(), plaint
 
 jobs = {}
 
+
 def getfjob(stage):
+  """
+  Return first job in the specified stage
+  """
   global jobs
 
   for job in jobs.keys():
@@ -57,6 +65,9 @@ def getfjob(stage):
   return None
 
 def rq_crack(req, header):
+  """
+  Create new job from the crack command
+  """
   global jobs
 
   keystream = header.split()[1]
@@ -68,6 +79,9 @@ def rq_crack(req, header):
   jobs[job.num] = job
 
 def rq_crackadd(req):
+  """
+  Create a reporting thread for the user that submitted a crack command
+  """
   global reportqs
 
   q = queue.Queue()
@@ -78,6 +92,9 @@ def rq_crackadd(req):
   reportqs.append(q)
 
 def rq_getkeystream(req, header):
+  """
+  Return keystream for endpoint computation
+  """
   jobn = getfjob("submitted")
 
   if jobn == None:
@@ -88,6 +105,9 @@ def rq_getkeystream(req, header):
     jobs[jobn].stage = "dpsearch"
 
 def rq_putdps(req, header):
+  """
+  Receive computed endpoints
+  """
   jobnum = int(header.split()[1])
   plen = int(header.split()[2])
 
@@ -97,6 +117,9 @@ def rq_putdps(req, header):
   jobs[jobnum].stage = "endpoints"
 
 def rq_getdps(req, header):
+  """
+  Send computed endpoints for table lookup
+  """
   jobn = getfjob("endpoints")
 
   if jobn == None:
@@ -108,6 +131,9 @@ def rq_getdps(req, header):
     jobs[jobn].stage = "startsearch"
 
 def rq_putstart(req, header):
+  """
+  Receive startpoints from tables
+  """
   jobnum = int(header.split()[1])
   plen = int(header.split()[2])
 
@@ -117,6 +143,9 @@ def rq_putstart(req, header):
   jobs[jobnum].stage = "startpoints"
 
 def rq_getstart(req, header):
+  """
+  Send startpoints for chain recovery
+  """
   jobn = getfjob("startpoints")
 
   if jobn == None:
@@ -128,6 +157,9 @@ def rq_getstart(req, header):
     jobs[jobn].stage = "collsearch"
 
 def rq_putkey(req, header):
+  """
+  Receive cracked key
+  """
   jobnum = int(header.split()[1])
   keyinfo = ' '.join(header.split()[2:])
 
@@ -135,6 +167,9 @@ def rq_putkey(req, header):
     q.put(keyinfo + "\r\n")
 
 def rq_finished(req, header):
+  """
+  Receive message that a job has been finished
+  """
   jobnum = int(header.split()[1])
   jobs[jobnum].stage = "finished"
 
@@ -144,6 +179,9 @@ def rq_finished(req, header):
    #del(jobs[jobnum])
 
 def rq_stats(req, header):
+  """
+  Print server performance info
+  """
   global jobs
 
   cnts = {}
@@ -157,6 +195,9 @@ def rq_stats(req, header):
     sendascii(req, "%s: %i\r\n"%(stage, cnts[stage]))
 
 def rq_unknown(req, header):
+  """
+  Command was not understood
+  """
   cmd = ""
   if len(header.split()) > 0:
     cmd = header.split()[0]
@@ -164,8 +205,14 @@ def rq_unknown(req, header):
 
 class ThreadedTCPRequestHandler(socketserver.BaseRequestHandler):
 
-  # this creates new thread for each client
+  """
+  TCP server implementation from https://docs.python.org/3/library/socketserver.html example
+  """
+
   def handle(self):
+    """
+    New thread for each client
+    """
     print("Connect from %s:%i"%self.request.getpeername())
 
     crackadded = 0
@@ -212,6 +259,7 @@ class ThreadedTCPRequestHandler(socketserver.BaseRequestHandler):
         rq_unknown(self.request, header)
 
 class ThreadedTCPServer(socketserver.ThreadingMixIn, socketserver.TCPServer):
+  # some weird "address already in use" after unclean shutdown
   allow_reuse_address = True
 
 # bind to socket and start accepting clients
