@@ -38,14 +38,13 @@ def report_thr(msgq, sock):
   while 1:
     s = msgq.get()
     sendascii(sock, s)
-    print("Sent %s"%s)
 
 JobT = Struct("Job", "num time stage keystream blob plaintext")
-def Job(time=time.time(), stage="submitted", keystream="", blob=bytes(), plaintext=[]):
+def Job(stime=time.time(), stage="submitted", keystream="", blob=bytes(), plaintext=[]):
   global jobptr
   jobptr += 1
-  time = time.time()
-  return JobT(jobptr-1, time, stage, keystream, blob, plaintext)
+  stime = time.time()
+  return JobT(jobptr-1, stime, stage, keystream, blob, plaintext)
 
 jobs = {}
 
@@ -131,8 +130,6 @@ def rq_getstart(req, header):
 def rq_putkey(req, header):
   jobnum = int(header.split()[1])
   keyinfo = ' '.join(header.split()[2:])
-
-  print("Found %s"%(keyinfo))
 
   for q in reportqs:
     q.put(keyinfo + "\r\n")

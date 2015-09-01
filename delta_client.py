@@ -58,7 +58,7 @@ while 1:
     sendblob(sock, y)
 
     solved += 1
-    if solved > 700:
+    if solved > 1700:
       sys.exit(0)
 
 

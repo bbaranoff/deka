@@ -94,9 +94,8 @@ int burst_load(char * cbuf, int size) {
 }
 
 uint64_t getrf(uint64_t table, uint64_t color) {
-#define offset -100
   //printf("t %li c %li\n", table, color);
-  return rft[table + offset][color];
+  return rft[table + offset + color];
 }
 
 int fincond(fragment f) {

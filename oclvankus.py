@@ -10,9 +10,6 @@ import time, socket, os, sys, struct, threading
 import queue #as queue
 from collections import namedtuple
 
-# Advance functions
-from tables import rft
-
 from libdeka import *
 
 import libvankus
