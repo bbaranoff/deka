@@ -183,7 +183,7 @@ def part_add(jobnum, bdata):
   # add fragments to queue
   bint = int(bdata,2)
 
-  fragbuf = np.zeros(9*colors*tables*samples, dtype=np.uint64)
+  fragbuf = np.zeros(9*colors*len(mytables)*samples, dtype=np.uint64)
 
   ind = 0
 
@@ -219,7 +219,7 @@ def complete_add(jobnum, keystream, blob):
 
   bint = int(keystream,2)
 
-  fragbuf = np.zeros(9*colors*tables*samples, dtype=np.uint64)
+  fragbuf = np.zeros(9*colors*len(mytables)*samples, dtype=np.uint64)
 
   ind = 0
 
