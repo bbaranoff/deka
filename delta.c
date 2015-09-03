@@ -23,13 +23,14 @@
 
 #include "delta_binary.h"
 
+/* One block to be mined. */
 typedef struct blockspec {
-  long blockno;
-  uint64_t here;
-  uint64_t target;
-  int tbl;
-  char * bl_memaddr;
-  int j;
+  long blockno;      // number of the 4KiB block in the table
+  uint64_t here;     // delta-encoding offset of the block
+  uint64_t target;   // endpoint we want to find
+  int tbl;           // table id
+  char * bl_memaddr; // address where the block is
+  int j;             // fragment position in burst
 } blockspec;
 
 
@@ -51,6 +52,7 @@ int max(int a, int b) {
 
 char * storages[devices];
 
+/* mmap table devices */
 void mmap_devices() {
 
   for(int i = 0; i<devices; i++) {
@@ -70,7 +72,7 @@ void mmap_devices() {
 }
 
 /* Block metadata */
-blockspec blockq[16320];
+blockspec blockq[tables*colors*samples];
 int blockqptr = 0;
 
 /* Save block metadata and advise the kernel to cache the block for us.
