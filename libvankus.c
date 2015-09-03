@@ -21,6 +21,9 @@
 
 #include "revbits.h"
 
+#include "vankusconf.h"
+
+/* Struct defining one fragment. */
 typedef struct __attribute__((__packed__)) fragment_s {
   uint64_t prng;
   uint64_t job;
@@ -33,29 +36,35 @@ typedef struct __attribute__((__packed__)) fragment_s {
   uint64_t challenge;
 } fragment;
 
+/* Struct defining coordinates of one fragment
+   (burst number + position in burst). */
 typedef struct fragdbe {
   int burst;
   int pos;
 } fragdbe;
 
+// fragments in one burst
 #define BURSTFRAGS 16320
-#define QSIZE 80
-#define CLBLOBSIZE 4095*32
+// size of one fragment in GPGPU buffer (prng + rf + challenge + flags)
 #define ONEFRAG 4
+// size of buffer exchanged with oclvankus.py
 #define BMSIZE (BURSTFRAGS*sizeof(fragment))
 
+// queue of bursts that we are cracking
 fragment ** burstq[QSIZE];
+// helper structure to keep track of fragments we are sending to GPGPU
 fragdbe fragdb[CLBLOBSIZE];
-
+// and pointer to its top
 int fragdbptr = 0;
 
-int solptr;
-
+/* stack of computed solutions (really, the strings like "Found xxx"
+   or "crack #xxx took xxx") and pointer to its top */
 #define SOLSIZE (100)
 char solutions[10][SOLSIZE];
+int solptr = 0;
 
-uint64_t mytables[] = {380, 220, 100,108,116,124,132,140,148,156,164,172,180,188,196,204,212,230,238,250,260,268,276,292,324,332,340,348,356,364,372,388,396,404,412,420,428,436,492,500};
 
+/* Get free position in the burst queue */
 int getfirstfree() {
   int i;
   for(i=0; i<QSIZE; i++) {
@@ -66,6 +75,8 @@ int getfirstfree() {
   return -1;
 }
 
+/* Get number of free slots in the burst queue - if there are free slots,
+   our master will ask for more work. */
 int getnumfree() {
   int fr = 0;
   for(int i=0; i<QSIZE; i++) {
@@ -76,6 +87,7 @@ int getnumfree() {
   return fr;
 }
 
+/* Add one new burst from cbuf to queue. */
 int burst_load(char * cbuf, int size) {
 
   int idx = getfirstfree();
@@ -93,11 +105,13 @@ int burst_load(char * cbuf, int size) {
 
 }
 
+/* Get value of the reduction function for a given table and color. */
 uint64_t getrf(uint64_t table, uint64_t color) {
   //printf("t %li c %li\n", table, color);
   return rft[table + offset + color];
 }
 
+/* Return 1 if the fragment is finished. */
 int fincond(fragment f) {
   if(f.color >= f.stop) {
     return 1;
@@ -108,10 +122,14 @@ int fincond(fragment f) {
   return 0;
 }
 
+/* helper function for qsort */
 int cmpint (const void * a, const void * b) {
    return ( *(int*)a - *(int*)b );
 }
 
+/* Get index of the i-th oldest burst. We want to work as FIFO, so we
+   prioritize the oldest ones. Some people say the cracker should work as
+   LIFO, which could be changed by, say, inverting the cmpint function. */
 int getprio(int idx) {
 
   int jobnums[QSIZE];
@@ -142,6 +160,8 @@ int getprio(int idx) {
 
 }
 
+/* Generate GPGPU buffer. Write it to cbuf and return number of fragments it
+   contains. */
 int frag_clblob(char * cbuf, int size) {
 
   fragdbptr = 0;
@@ -152,7 +172,7 @@ int frag_clblob(char * cbuf, int size) {
 
     int bp = getprio(i);
 
-    if(bp < 0) {
+    if(bp < 0) { // no more bursts available
       break;
     }
 
@@ -161,7 +181,7 @@ int frag_clblob(char * cbuf, int size) {
 
       for(int j = 0; j<BURSTFRAGS; j++) {
 
-        if(fragdbptr >= CLBLOBSIZE) {
+        if(fragdbptr >= CLBLOBSIZE) { // buffer full
           return fragdbptr;
         }
 
@@ -190,22 +210,8 @@ int frag_clblob(char * cbuf, int size) {
   return fragdbptr;
 }
 
-int getindex(uint64_t table) {
-
-  int mlen = sizeof(mytables);
-
-  int i = 0;
-  while(mytables[i] != table) {
-    if (i>mlen) {
-      return -1;
-    }
-    i++;
-  }
-
-  return i;
-
-}
-
+/* Parse the returned GPGPU buffer (cbuf). Update fragments in burstq with
+   new, recomputed ones. And yield the "Found" message if the key was found. */
 void report(char * cbuf, int size) {
 
   uint64_t * a = (uint64_t *)cbuf;
@@ -234,7 +240,7 @@ void report(char * cbuf, int size) {
 
     }
 
-    if (a[i * ONEFRAG + 3] & 0x2ULL) {
+    if (a[i * ONEFRAG + 3] & 0x2ULL) { // key found
       uint64_t state = rev(a[i * ONEFRAG + 0]);
 
       snprintf(solutions[solptr], SOLSIZE, "Found %016lX @ %li  #%li  (table:%li)", state, arr[e.pos].pos, arr[e.pos].job, arr[e.pos].table);
@@ -252,6 +258,11 @@ void report(char * cbuf, int size) {
 
 }
 
+/* Scan burstq for computed bursts and return them. Or return the "took" message
+   if the finished burst was the challenge lookup.
+
+   Return the computed burst in cbuf and return the job number.
+ */
 int pop_result(char * cbuf, int size) {
 
   uint64_t * a = (uint64_t *)cbuf;
@@ -260,7 +271,10 @@ int pop_result(char * cbuf, int size) {
 
   //printf("Missing");
   for(int i = 0; i < QSIZE; i++) {
+
+    // how many fragments in that bursts are *not* finished
     int missing = 0;
+    // and how many are challenge lookup
     int chall = 0;
 
 
@@ -270,18 +284,20 @@ int pop_result(char * cbuf, int size) {
 
       for(int j = 0; j < BURSTFRAGS; j++) {
         fragment f = arr[j];
-        if((fincond(f) == 0)) {
+        if((fincond(f) == 0)) { // not finished
           //printf("No cond for %i:%i %lx %lx %lx %lx %lx\n", i, j, f.prng, f.job, f.pos, f.table, f.color);
           missing++;
         }
-        if(f.challenge != 0) {
+        if(f.challenge != 0) { // challenge lookup
           chall++;
         }
       }
       //printf(" %i", missing);
-      if(missing == 0) {
+      if(missing == 0) { // yay, the burst is finished
 
         fragment* arr = (fragment*) burstq[i];
+
+        /* extract prng values to build raw burst structure */
         for(int b = 0; b < BURSTFRAGS; b++) {
           fragment f = arr[b];
           a[b] = f.prng;
@@ -289,6 +305,7 @@ int pop_result(char * cbuf, int size) {
 
         int jobnum = arr[0].job; // for historical reasons, there is a jobnum in every fragment
 
+        /* finished && challenge lookup -> job is finished */
         if(chall > 0) {
           snprintf(solutions[solptr], SOLSIZE, "crack #%i took", jobnum);
           solptr++;
@@ -309,7 +326,8 @@ int pop_result(char * cbuf, int size) {
 
 }
 
-
+/* Pop solution from solutions stack. Return the solution in cbuf or return
+   -1 if this was a pop from an empty stack. */
 int pop_solution(char * cbuf, int size) {
 
   if (solptr > 0) {
