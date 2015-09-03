@@ -1,3 +1,5 @@
+
+/* First, path to index files. The order has to match the numbers in vankusconf.py. */
 const char * files[40] = { 
 "/mnt/tables/gsm/380.idx",
 "/mnt/tables/gsm/220.idx",
@@ -39,6 +41,12 @@ const char * files[40] = {
 "/mnt/tables/gsm/436.idx",
 "/mnt/tables/gsm/492.idx",
 "/mnt/tables/gsm/500.idx"  };
+
+/* Offsets of beginning of tables specified in 4096B long blocks.
+   Of course the order matters.
+   E.g. the first number "102347869" tells us that the first table, 380, begins
+   102347869*4096 = 419 216 871 424 bytes from the beginning of the device.
+*/
 
 const uint64_t offsets[40] = {
 102347869,
@@ -83,12 +91,16 @@ const uint64_t offsets[40] = {
 40935940
 };
 
+/* Path to devices (or files) where the tables are stored. */
 const char * devpaths[] = {
 "/dev/disk/by-id/ata-ADATA_SX900_02716033500100000013",
 "/dev/disk/by-id/ata-ADATA_SX900_02716081500300000310",
 "/dev/disk/by-id/ata-ADATA_SX900_02716081500600000463",
 "/dev/disk/by-id/ata-ADATA_SX900_02730235500600001031"};
 
+/* Which table has been stored on which device. E.g. "2" means that the table
+   is on second (counting from 0) device from the devpaths array.
+*/
 const int devs[40] = {
 2,
 2,
