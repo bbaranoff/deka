@@ -121,6 +121,8 @@ echo 'res = reg1.x | reg1.y | reg1.z | reg1.w |
       reg2.x | reg2.y | reg2.z | reg2.w |
       reg3.x | reg3.y | reg3.z | reg3.w;'
 
+## If this is the first iteration, all instances that are entering from
+# a previous distinguished point will *of* *course* be zero. So ignore them.
 # FIXME without conditional (bit smearing)
 echo 'if (z == 0) {
         res = mask;
@@ -129,7 +131,7 @@ echo 'if (z == 0) {
 ## We would increment color here, but I don't want to mess with it in OpenCL
 # as it would probably require excessive branching, so
 # we let our parent handle this - by breaking later. The user-space library
-# will notice it and resubmit the fregment with color changed.
+# will notice it and resubmit the fragment with color changed.
 
 ## Now, we run 99 dummy cycles to collapse the keyspace.
 
@@ -155,8 +157,8 @@ function a5_ireg_init {
   # We don't want to clock instances that are already in distinguished point.
   # By the way original slicer just breaks the kernel once one instance reaches
   # DP - but we don't want such frequent resubmits
-  # (they would happen on average chainlen/slicewidth, i.e. 2**12/64, or every
-  # 64th iteration)
+  # (they would happen on average chainlen/slicewidth, i.e. 2**12/32, or every
+  # 128th iteration)
 
   echo 'clock1 &= res;
         clock2 &= res;
