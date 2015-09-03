@@ -9,7 +9,7 @@ from libdeka import *
 
 import delta
 
-HOST, PORT = "localhost", 1578
+from vankusconf import HOST, PORT
 
 sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
@@ -17,7 +17,8 @@ sock.connect((HOST, PORT))
 
 delta.delta_init()
 
-solved=0
+d = bytes()
+y = bytearray()
 
 while 1:
 
@@ -39,26 +40,22 @@ while 1:
     # convert to mutable bytearray, some swig magic
     y = bytearray(d)
 
-    #delta.submitblocks(x)
-
-    # now the kernel is processing our request
-
     x=time.time()
-    print("submit")
+
+    # find blocks we will need and madvise them
     delta.ncq_submit(y)
-    print("%f s"%(time.time()-x))
+
+    print("submit took: %f s"%(time.time()-x))
     x=time.time()
 
     print("process")
+
+    # read the madvised blocks
     delta.ncq_read(y)
-    print("%f s"%(time.time()-x))
+
+    print("process took: %f s"%(time.time()-x))
 
     sendascii(sock, "putstart %i %i\r\n"%(jobnum, plen))
 
     sendblob(sock, y)
-
-    solved += 1
-    if solved > 1700:
-      sys.exit(0)
-
 

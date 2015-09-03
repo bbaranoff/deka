@@ -15,10 +15,11 @@ from collections import namedtuple
 
 from libdeka import *
 
+from vankusconf import HOST, PORT, DEBUGDUMP
+
 import socketserver
 
-HOST = "localhost"
-PORT = 1578
+import pickle
 
 jobstages = [ "submitted",   # user submitted keystream
               "dpsearch",    # worker is searching for distinguished points
@@ -36,14 +37,27 @@ lock = threading.Lock()
 
 reportqs=[]
 
+def saveblob(fname, blob):
+  '''
+  save burst to file for debugging
+  '''
+
+  if not DEBUGDUMP:
+    return
+
+  o=open("bursts/%s.pkl"%fname, 'wb')
+  pickle.dump(blob, o, pickle.HIGHEST_PROTOCOL)
+  o.close()
+
 def report_thr(msgq, sock):
   """
   Reporting thread sending messages to client
   """
+
   while 1:
+    # blocking queue get
     s = msgq.get()
     sendascii(sock, s)
-
 
 JobT = Struct("Job", "num time stage keystream blob plaintext")
 def Job(stime=time.time(), stage="submitted", keystream="", blob=bytes(), plaintext=[]):
@@ -121,6 +135,8 @@ def rq_putdps(req, header):
 
   payload = getdata(req, plen)
 
+  saveblob("%i-dps"%jobnum, payload)
+
   jobs[jobnum].blob = payload
   jobs[jobnum].stage = "endpoints"
 
@@ -149,6 +165,8 @@ def rq_putstart(req, header):
   plen = int(header.split()[2])
 
   payload = getdata(req, plen)
+
+  saveblob("%i-start"%jobnum, payload)
 
   jobs[jobnum].blob = payload
   jobs[jobnum].stage = "startpoints"

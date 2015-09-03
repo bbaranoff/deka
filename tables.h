@@ -1,5 +1,7 @@
 #define offset (-100)
 
+/* Precomputed reduction function constants, starting at -offset */
+
 uint64_t rft[] = {
 0x36969c53beead7bf,
 0x079997cad253b413,

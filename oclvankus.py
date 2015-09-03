@@ -7,19 +7,12 @@
 import pyopencl as cl
 import numpy as np
 import time, socket, os, sys, struct, threading
-import queue #as queue
-from collections import namedtuple
 
 from libdeka import *
 
 import libvankus
 
-import pickle
-from datetime import datetime
-
-from vankusconf import mytables
-
-HOST, PORT = "localhost", 1578
+from vankusconf import mytables, HOST, PORT, kernels, slices
 
 mf = cl.mem_flags
 # just some context... You can define it with environment variable (you will be asked on first run)
@@ -39,10 +32,6 @@ samplelen = 64
 # samples in one burst (moving window)
 samples = burstlen - samplelen + 1
 
-# how many kernels to run in parallel
-kernels = 4095
-# slices per kernel
-slices = 32
 # fragments in cl blob
 clblobfrags = kernels * slices
 
@@ -55,8 +44,6 @@ mask64 = 2**64-1
 sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
 x = 0
-
-mywork = 0
 
 # Reverse bits in integer
 def revbits(x):
@@ -90,8 +77,6 @@ def master_connect():
 
 # Ask our master for keystream to crack
 def get_keystream():
-  global mywork
-
   sock.sendall(bytes("getkeystream\r\n", "ascii"))
 
   l = getline(sock)
@@ -103,14 +88,11 @@ def get_keystream():
 
   keystream = l.split()[1]
 
-  mywork += 1
   part_add(jobnum, keystream)
 
 
 # Ask our master for startpoints to finish
 def get_startpoints():
-  global mywork
-
   sock.sendall(bytes("getstart\r\n", "ascii"))
 
   l = getline(sock)
@@ -125,8 +107,6 @@ def get_startpoints():
 
   d = getdata(sock, plen)
 
-  mywork += 1
-
   print("Adding start")
 
   complete_add(jobnum, keystream, d)
@@ -134,22 +114,15 @@ def get_startpoints():
 
 # Post data package to our master
 def put_result(command, jobnum, data):
-  global mywork
-
   sendascii(sock, "%s %i %i\r\n"%(command, jobnum, len(data)*8))
 
   #print("len data %i"%len(data))
 
-  mywork -= 1
   sendblob(sock, data)
 
 # Post computed endpoints to our master
 def put_dps(burst, n):
-  global mywork
-
   #print("reporting job %i len %i"%(n, len(burst)))
-
-  mywork -= 1
 
   put_result("putdps", n, burst)
 
@@ -272,7 +245,7 @@ def krak():
   s = np.uint32(a.shape)/4
 
   # How many kernels to execute
-  kernelstoe = (n//(32)+1,)
+  kernelstoe = (n//(slices)+1,)
 
   # Launch the kernel
   print("Launching kernel, fragments %i, kernels %i"%(n,kernelstoe[0]))
@@ -301,7 +274,7 @@ def abs_idx(pos, table, color):
 # Post finished work to our master
 def put_work():
 
-  a = np.zeros(16320, dtype=np.uint64)
+  a = np.zeros(colors*len(mytables)*samples, dtype=np.uint64)
 
   n = libvankus.pop_result(a)
 
@@ -329,3 +302,4 @@ while (1):
     print("Network thread died :-(")
     sys.exit(1)
   krak()
+
