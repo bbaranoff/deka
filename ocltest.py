@@ -3,7 +3,6 @@
 import pyopencl as cl
 import numpy as np
 import sys
-import tables
 import time
 
 mf = cl.mem_flags

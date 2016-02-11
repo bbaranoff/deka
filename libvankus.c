@@ -23,6 +23,10 @@
 
 #include "vankusconf.h"
 
+/* The idea is that work is loaded by burst_load() into burstq[] and then burstq[] is periodically submitted to the GPU via 
+   frag_clblob(). The GPU returns some work solved to report() each time. The report() function sees what is solved and sets some flags in 
+   burstq[] accordingly. Once some burst in burstq[] is finishet, it is kicked out. "Free slots" is how many free places are in burstq[]. */
+
 /* Struct defining one fragment. */
 typedef struct __attribute__((__packed__)) fragment_s {
   uint64_t prng;
