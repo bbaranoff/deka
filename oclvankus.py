@@ -62,12 +62,19 @@ def network_thr():
 
     print("%i free slots"%n)
 
-    if n > 2:
-      get_keystream()
-      get_startpoints()
+    while libvankus.getnumfree() > 2:
+      if not get_startpoints():
+        break
+
+    while libvankus.getnumfree() > 2:
+      if not get_keystream():
+        break
+
+    put_work()
     put_work()
     put_cracked()
-    time.sleep(0.3)
+    put_cracked()
+    time.sleep(0.2)
 
 
 def master_connect():
@@ -84,11 +91,13 @@ def get_keystream():
   jobnum = int(l.split()[0])
 
   if jobnum == -1:
-    return
+    return False
 
   keystream = l.split()[1]
 
   part_add(jobnum, keystream)
+
+  return True
 
 
 # Ask our master for startpoints to finish
@@ -100,7 +109,7 @@ def get_startpoints():
   jobnum = int(l.split()[0])
 
   if jobnum == -1:
-    return
+    return False
 
   keystream = l.split()[1]
   plen = int(l.split()[2])
@@ -110,6 +119,8 @@ def get_startpoints():
   print("Adding start")
 
   complete_add(jobnum, keystream, d)
+
+  return True
 
 
 # Post data package to our master
