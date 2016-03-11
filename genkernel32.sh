@@ -99,6 +99,9 @@ echo '
 echo 'res = mask;'
 echo 'for(z=0; z<3000; z++) {'
 
+# 3000 - how many chain links are computed on each kernel submition
+# you can try to tune this parameter, probably down
+
 ## Apply reduction function. And restore the register state.
 # And do not modify not-clocked slices (~res).
 for i in `seq 0 63`; do

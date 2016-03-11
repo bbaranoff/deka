@@ -1,7 +1,7 @@
 CC = gcc
 SWIG = swig3.0
 
-CFLAGS = -Wall -lm -std=gnu99 -O3 -g -ggdb3
+CFLAGS = -Wall -lm -std=gnu99 -O3 -lpthread -g -ggdb3
 
 all: delta libvankus
 
@@ -31,6 +31,6 @@ v-so: v-wrap
 
 
 clean:
-	rm -rf _delta.so delta_wrap.o delta.o _libvankus.so libvankus_wrap.o libvankus.o libvankus.py
+	rm -rf _delta.so delta_wrap.o delta.o _libvankus.so libvankus_wrap.o libvankus.o
 
 

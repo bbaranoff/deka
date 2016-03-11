@@ -186,7 +186,7 @@ void load_idx() {
    j:   number of fragment in burst
 
  */
-void StartEndpointSearch(uint64_t end, int tbl, int j) {
+void StartEndpointSearch(uint64_t end, int tbl, int j, FILE* fp) {
 
   //printf("end=%llx, blockstart=%llx\n", end, blockstart);
   if (end<mLowEndpoint[tbl]) return;
@@ -232,7 +232,7 @@ void StartEndpointSearch(uint64_t end, int tbl, int j) {
        }*/
 
 
-  MineABlockNCQ(bl,here,end,tbl,j);
+  MineABlockNCQ(bl,here,end,tbl,j, fp);
   //mDevice->Request(req, (uint64_t)bl+mBlockOffset );
 }
 

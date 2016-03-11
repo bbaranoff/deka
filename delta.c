@@ -1,7 +1,11 @@
+#define _GNU_SOURCE
 #include <stdio.h>
 #include <sys/time.h>
 #include <assert.h>
 #include <stdlib.h>
+
+#include <pthread.h>
+#include <poll.h>
 
 #include <inttypes.h>
 #include <fcntl.h>
@@ -33,6 +37,9 @@ typedef struct blockspec {
   int j;             // fragment position in burst
 } blockspec;
 
+pthread_barrier_t barrier;
+pthread_mutex_t dmutex = PTHREAD_MUTEX_INITIALIZER;
+pthread_cond_t dcond = PTHREAD_COND_INITIALIZER;
 
 /* How many tables, colors and keystream samples do we have in one burst */
 #define tables 40
@@ -47,6 +54,7 @@ int max(int a, int b) {
   }
 }
 
+volatile uint64_t * fragments;
 
 #define devices (sizeof(devpaths) / sizeof(devpaths[0]))
 
@@ -57,7 +65,7 @@ void mmap_devices() {
 
   for(int i = 0; i<devices; i++) {
     size_t dsize;
-    int fd = open(devpaths[i], O_RDONLY);
+    int fd = open(devpaths[i], O_RDONLY|O_DIRECT);
 
     ioctl(fd, BLKGETSIZE64, &dsize);
 
@@ -83,88 +91,229 @@ int blockqptr = 0;
   tbl:     table id
   j:       fragment position in burst
  */
-
-void MineABlockNCQ(long blockno, uint64_t here, uint64_t target, int tbl, int j) {
+int mined;
+void MineABlockNCQ(long blockno, uint64_t here, uint64_t target, int tbl, int j, FILE* fp) {
 
   // printf("Searching for endpoint, block %lx, blockstart %lx, endpoint %lX, table %i, idx %i\n", blockno, here, target, tbl, j);
 
   blockno += offsets[tbl];
 
-  blockq[blockqptr].blockno = blockno;
-  blockq[blockqptr].here = here;
-  blockq[blockqptr].target = target;
-  blockq[blockqptr].tbl = tbl;
-  blockq[blockqptr].j = j;
-
+  // compute block address in memory
   int64_t a = blockno*4096;
+  //char * maddr = storages[devs[tbl]] + a;
 
-  char * maddr = storages[devs[tbl]] + a;
+  char * scratch = malloc(4096);
+  //memcpy(scratch, maddr, 4096);
+  fseek(fp, a, SEEK_SET);
+  fread(scratch, 4096, 1, fp);
 
-  madvise(maddr, 4096, MADV_WILLNEED|MADV_RANDOM);
-
-  blockq[blockqptr].bl_memaddr = maddr;
-
-  blockqptr++;
-}
-
-/* Process all blocks from burstq. Hash the generation keys and write
-    the result to the buffer. */
-
-void MineBlocksMmap(uint64_t * fragments) {
-
-  int mined = 0;
-
-  for(int i = 0; i<blockqptr; i++) {
-    char * maddr = blockq[i].bl_memaddr;
-
-    int j = blockq[i].j;
-
-    uint64_t re = CompleteEndpointSearch(maddr, blockq[i].here, blockq[i].target);
-
-    if(re) {
-      re=rev(ApplyIndexFunc(re, 34));
-      mined++;
-    }
-
-    fragments[j] = re;
-
-    madvise(maddr, 4096, MADV_DONTNEED);
+  uint64_t re = CompleteEndpointSearch(scratch, here, target);
+  if(re) {
+    re=rev(ApplyIndexFunc(re, 34));
+    mined++; // must be mutex-protected
   }
 
-  printf("mined %i\n", mined);
-
-  blockqptr = 0;
+  fragments[j] = re;
+  free(scratch);
 }
+
+int numt = 40;
+
+#define GIGA 1000000000L
+
+typedef struct tr {
+  int tid;
+  pthread_t thr;
+  int start;
+  int stop;
+  int bp;
+} tr;
+
+tr * t;
+
+void * mujthread(void *);
 
 /* Init the machine. This is to be called once on the library load. */
 void delta_init() {
   mmap_devices();
   load_idx();
 
+  if(!t) {
+    t = calloc(numt, sizeof(tr));
+  }
+
+  printf("Erecting barrier\n");
+  pthread_barrier_init(&barrier, NULL, numt);
+
+  printf("Creating threads\n");
+
+  for(int i = 0; i<numt; i++) {
+    //pthread_join(t[i].thr, NULL);
+    pthread_t thr;
+    t[i].tid = i;
+
+    t[i].start = i*408;
+    t[i].stop = (i+1)*408;
+
+    int ret = pthread_create(&thr, NULL, &mujthread, (void*) (t + i));
+    t[i].thr = thr;
+
+    if(ret != 0) {
+      printf("Cannot create thread!\n");
+      exit(EXIT_FAILURE);
+    }
+  }
+
+
 }
+
+int jobs = 0;
+
+int qrun = 0;
+
+void * mujthread(void *ptr) {
+  tr * ctx = (tr*)ptr;
+  //printf("Thread %i, range %i %i, is waiting on barrier\n", ctx->tid, ctx->start, ctx->stop);
+
+  //pthread_barrier_wait(&barrier);
+
+  int mytbl = -1;
+
+  FILE *ptr_myfile;
+
+  int qpb = 0;
+
+  while(1) {
+    printf("Thread %i, range %i %i, waiting on barrier\n", ctx->tid, ctx->start, ctx->stop);
+    pthread_barrier_wait(&barrier);
+    printf("Thread %i, range %i %i, passed the barrier\n", ctx->tid, ctx->start, ctx->stop);
+
+    while(qrun == qpb) { // hope we have atomic 4B assignments, otherwise this will terribly fail
+      poll(NULL, 0, 1); // XXX I don't know how to use barriers without this
+    }
+
+    qpb = qrun;
+
+    ctx->bp = qpb;
+
+    for(int tbl=0; tbl<tables; tbl++) {
+      for(int i=0; i<(colors*samples); i++) {
+        int j = i+(tbl*colors*samples);
+        if(j >= ctx->start && j < ctx->stop) {
+          if(mytbl >= 0 && mytbl != tbl) {
+            printf("I/O scatter violation! (expected %i got %i at %i)\n", mytbl, tbl, j);
+            exit(1);
+          }
+          if(mytbl == -1) { // first run, open file
+            ptr_myfile=fopen(devpaths[devs[tbl]],"rb");
+            mytbl = tbl;
+          }
+
+          uint64_t tg = fragments[j];
+          tg = rev(tg);
+          StartEndpointSearch(tg, tbl, j, ptr_myfile);
+
+          pthread_mutex_lock(&dmutex);
+          jobs++;
+          pthread_mutex_unlock(&dmutex);
+        }
+      }
+    }
+  }
+
+  fclose(ptr_myfile);
+
+  printf("Thread %i done\n", ctx->tid);
+
+  return(NULL);
+}
+
 
 /* Prepare block for all fragments from burst in cbuf. */
 
 void ncq_submit(char * cbuf, int size) {
 
-  uint64_t * fragments = (uint64_t *)cbuf;
+  /*FILE *ptr_myfile;
+  ptr_myfile=fopen("burst.bin","wb");
+  fwrite(cbuf, size, 1, ptr_myfile);
+  fclose(ptr_myfile);*/
 
-	for(int tbl=0; tbl<tables; tbl++) {
-		for(int i=0; i<(colors*samples); i++) {
-			int j = i+(tbl*colors*samples);
-			uint64_t tg = fragments[j];
-			tg = rev(tg);
-
-			//printf("Search for %llx, table %i, i %i, j %i\n", tg, tbl, i, j);
-
-			StartEndpointSearch(tg, tbl, j);
-		}
-	}
-
+  return;
 }
 
 /* Wrapper for MineBlocksMmap */
 void ncq_read(char * cbuf, int size) {
-  MineBlocksMmap((uint64_t *)cbuf);
+  struct timespec start, end;
+
+  jobs = 0;
+
+  clock_gettime(CLOCK_REALTIME, &start);
+  fragments = (uint64_t *)cbuf;
+
+  qrun++;
+  printf("Destroying barrier\n");
+  pthread_barrier_destroy(&barrier);
+
+  int be = 0;
+  while(1) {
+    if(be == 0) {
+      int allr = 1;
+      for(int i = 0; i<numt; i++) {
+        if(t[i].bp != qrun) {
+          allr = 0;
+        }
+      }
+      if(allr == 1) {
+        printf("Erecting barrier\n");
+        pthread_barrier_init(&barrier, NULL, numt);
+        be = 1;
+      }
+    }
+    pthread_mutex_lock(&dmutex);
+    if(jobs>=16320) {
+      break;
+    }
+    pthread_mutex_unlock(&dmutex);
+    poll(NULL, 0, 1);
+  }
+
+  pthread_mutex_unlock(&dmutex);
+
+  clock_gettime(CLOCK_REALTIME, &end);
+  long long unsigned int diff = GIGA*(end.tv_sec - start.tv_sec) + end.tv_nsec - start.tv_nsec;
+  printf("Delta lookup: %llu ms (%i)\n", diff/1000000, mined);
+
+  return;
+
 }
+
+
+volatile uint64_t ble;
+int main() {
+  delta_init();
+
+  uint64_t * scb = (uint64_t*)malloc(8*16320);
+
+  FILE *ptr_myfile;
+  ptr_myfile=fopen("burst.bin","rb");
+  fread(scb, 130560, 1, ptr_myfile);
+  fclose(ptr_myfile);
+
+  /*for(int i = 0; i<16320; i++) {
+    scb[i] = random();
+  }*/
+
+  printf("init done, run!\n");
+
+  ncq_read((char*)scb, 8*16320);
+
+  /*for(int i = 0; i<16320; i++) {
+    ble = scb[i];
+    printf("%x", ble&0x1);
+  }*/
+
+  return 0;
+
+}
+
 

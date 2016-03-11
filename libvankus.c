@@ -64,7 +64,7 @@ int fragdbptr = 0;
 /* stack of computed solutions (really, the strings like "Found xxx"
    or "crack #xxx took xxx") and pointer to its top */
 #define SOLSIZE (100)
-char solutions[10][SOLSIZE];
+char solutions[20][SOLSIZE];
 int solptr = 0;
 
 
