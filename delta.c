@@ -135,15 +135,15 @@ void * mujthread(void *);
 
 /* Init the machine. This is to be called once on the library load. */
 void delta_init() {
-  mmap_devices();
+  //mmap_devices();
   load_idx();
 
   if(!t) {
     t = calloc(numt, sizeof(tr));
   }
 
-  printf("Erecting barrier\n");
-  pthread_barrier_init(&barrier, NULL, numt);
+  //printf("Erecting barrier\n");
+  //pthread_barrier_init(&barrier, NULL, numt);
 
   printf("Creating threads\n");
 
@@ -184,9 +184,9 @@ void * mujthread(void *ptr) {
   int qpb = 0;
 
   while(1) {
-    printf("Thread %i, range %i %i, waiting on barrier\n", ctx->tid, ctx->start, ctx->stop);
-    pthread_barrier_wait(&barrier);
-    printf("Thread %i, range %i %i, passed the barrier\n", ctx->tid, ctx->start, ctx->stop);
+    //printf("Thread %i, range %i %i, waiting on barrier\n", ctx->tid, ctx->start, ctx->stop);
+    //pthread_barrier_wait(&barrier);
+    //printf("Thread %i, range %i %i, passed the barrier\n", ctx->tid, ctx->start, ctx->stop);
 
     while(qrun == qpb) { // hope we have atomic 4B assignments, otherwise this will terribly fail
       poll(NULL, 0, 1); // XXX I don't know how to use barriers without this
@@ -213,12 +213,12 @@ void * mujthread(void *ptr) {
           tg = rev(tg);
           StartEndpointSearch(tg, tbl, j, ptr_myfile);
 
-          pthread_mutex_lock(&dmutex);
-          jobs++;
-          pthread_mutex_unlock(&dmutex);
         }
       }
     }
+    pthread_mutex_lock(&dmutex);
+    jobs += ctx->stop - ctx->start;
+    pthread_mutex_unlock(&dmutex);
   }
 
   fclose(ptr_myfile);
@@ -251,12 +251,12 @@ void ncq_read(char * cbuf, int size) {
   fragments = (uint64_t *)cbuf;
 
   qrun++;
-  printf("Destroying barrier\n");
-  pthread_barrier_destroy(&barrier);
+  //printf("Destroying barrier\n");
+  //pthread_barrier_destroy(&barrier);
 
   int be = 0;
   while(1) {
-    if(be == 0) {
+    /*if(be == 0) {
       int allr = 1;
       for(int i = 0; i<numt; i++) {
         if(t[i].bp != qrun) {
@@ -268,8 +268,9 @@ void ncq_read(char * cbuf, int size) {
         pthread_barrier_init(&barrier, NULL, numt);
         be = 1;
       }
-    }
+    }*/
     pthread_mutex_lock(&dmutex);
+    //printf("jobs: %i\n", jobs);
     if(jobs>=16320) {
       break;
     }
