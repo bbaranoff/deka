@@ -94,7 +94,9 @@ def rq_crack(req, header):
     return
   job = Job(keystream = keystream)
   sendascii(req, "Cracking #%i %s\r\n"%(job.num, job.keystream))
+  lock.acquire()
   jobs[job.num] = job
+  lock.release()
 
 def rq_crackadd(req):
   """
@@ -137,8 +139,10 @@ def rq_putdps(req, header):
 
   saveblob("%i-dps"%jobnum, payload)
 
+  lock.acquire()
   jobs[jobnum].blob = payload
   jobs[jobnum].stage = "endpoints"
+  lock.release()
 
 def rq_getdps(req, header):
   """
@@ -168,8 +172,10 @@ def rq_putstart(req, header):
 
   saveblob("%i-start"%jobnum, payload)
 
+  lock.acquire()
   jobs[jobnum].blob = payload
   jobs[jobnum].stage = "startpoints"
+  lock.release()
 
 def rq_getstart(req, header):
   """
