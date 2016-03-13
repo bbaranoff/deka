@@ -261,6 +261,8 @@ void report(char * cbuf, int size) {
     if (a[i * ONEFRAG + 3] & 0x2ULL) { // key found
       uint64_t state = rev(a[i * ONEFRAG + 0]);
 
+      memset(solutions[solptr], 0, SOLSIZE);
+
       snprintf(solutions[solptr], SOLSIZE, "Found %016lX @ %li  #%li  (table:%li)", state, arr[e.pos].pos, arr[e.pos].job, arr[e.pos].table);
 
       //printf("to solq: %s\n", solutions[solptr]);
