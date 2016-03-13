@@ -226,6 +226,20 @@ void report(char * cbuf, int size) {
 
     fragment* arr = (fragment*) burstq[e.burst];
 
+    /* The kernel could return distinguished point, but the flag is not set. Fix it. */
+    uint64_t x = a[i * ONEFRAG] ^ getrf(arr[e.pos].table, arr[e.pos].color);
+    if((x & 0xFFF0000000000000ULL) == 0) {
+      //assert(getrf(arr[e.pos].table, arr[e.pos].color) == a[i * ONEFRAG + 1]);
+      //printf("Happened, %" PRIx64 " %" PRIx64 "\n", a[i * ONEFRAG], a[i * ONEFRAG+1]);
+      a[i * ONEFRAG] = x;
+      a[i * ONEFRAG + 3] |= 1;
+    }
+
+    /*if(e.pos == 1) {
+      printf("Returned: %" PRIx64 ", flags %" PRIx64 ", color %" PRIx64 "\n", a[i * ONEFRAG], a[i * ONEFRAG+3], getrf(arr[e.pos].table, arr[e.pos].color));
+      fflush(stdout);
+    }*/
+
     if (a[i * ONEFRAG + 3] & 0x1) { // end of color
 
       /* if there is no next RF, no pre-reversing is used */
