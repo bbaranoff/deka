@@ -97,7 +97,7 @@ echo '
 ### Slice machine running
 
 echo 'res = mask;'
-echo 'for(z=0; z<3000; z++) {'
+echo 'for(z=0; z<1000; z++) {'
 
 ## Apply reduction function. And restore the register state.
 # And do not modify not-clocked slices (~res).

@@ -8,6 +8,9 @@ sleep 1
 # XXX
 
 PYOPENCL_CTX=0 ./oclvankus.py > oclvankus1_1.log &
+PYOPENCL_CTX=0 ./oclvankus.py > oclvankus1_2.log &
 PYOPENCL_CTX=1 ./oclvankus.py > oclvankus2_1.log &
+PYOPENCL_CTX=1 ./oclvankus.py > oclvankus2_2.log &
 PYOPENCL_CTX=2 ./oclvankus.py > oclvankus3_1.log &
+PYOPENCL_CTX=2 ./oclvankus.py > oclvankus3_2.log &
 

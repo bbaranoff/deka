@@ -97,7 +97,7 @@ echo '
 ### Slice machine running
 
 echo 'res = mask;'
-echo 'for(z=0; z<3000; z++) {'
+echo 'for(z=0; z<1000; z++) {'
 
 # 3000 - how many chain links are computed on each kernel submition
 # you can try to tune this parameter, probably down
