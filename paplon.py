@@ -215,7 +215,9 @@ def rq_finished(req, header):
   for q in reportqs:
     q.put("crack #%i took %i msec\r\n"%(jobnum, (time.time() - jobs[jobnum].time) * 1000))
 
-   #del(jobs[jobnum])
+  lock.acquire()
+  del(jobs[jobnum])
+  lock.release()
 
 def rq_stats(req, header):
   """
