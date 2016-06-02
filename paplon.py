@@ -64,9 +64,10 @@ def Job(stime=time.time(), stage="submitted", keystream="", blob=bytes(), plaint
   global jobptr
   lock.acquire()
   jobptr += 1
+  myjob = jobptr
   stime = time.time()
   lock.release()
-  return JobT(jobptr-1, stime, stage, keystream, blob, plaintext)
+  return JobT(myjob, stime, stage, keystream, blob, plaintext)
 
 jobs = {}
 
@@ -92,8 +93,15 @@ def rq_crack(req, header):
   if not re.search("^[01]{114}$", keystream):
     sendascii(req, "Keystream must be exactly one GSM burst, i.e. 114 bits\r\n")
     return
+
   job = Job(keystream = keystream)
+
   sendascii(req, "Cracking #%i %s\r\n"%(job.num, job.keystream))
+
+  if re.search("^[0]{114}$", keystream):
+    sendascii(req, "crack #%i took 0 msec"%job.num)
+    return
+
   lock.acquire()
   jobs[job.num] = job
   lock.release()
