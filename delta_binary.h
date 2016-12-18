@@ -108,7 +108,7 @@ void load_idx() {
     /* Open index file */
     FILE* fd = fopen(files[idx],"rb");
     if (fd==0) {
-      printf("Could not open %s for reading.\n", "f");
+      printf("Could not open %s for reading.\n", files[idx]);
     }
     assert(fd);
     fseek(fd, 0, SEEK_END);
