@@ -99,7 +99,7 @@ def rq_crack(req, header):
   sendascii(req, "Cracking #%i %s\r\n"%(job.num, job.keystream))
 
   if re.search("^[0]{114}$", keystream):
-    sendascii(req, "crack #%i took 0 msec"%job.num)
+    sendascii(req, "crack #%i took 0 msec\n"%job.num)
     return
 
   lock.acquire()
