@@ -1,8 +1,10 @@
 #define _GNU_SOURCE
+#include <errno.h>
 #include <stdio.h>
 #include <sys/time.h>
 #include <assert.h>
 #include <stdlib.h>
+#include <string.h>
 
 #include <pthread.h>
 #include <poll.h>
@@ -206,6 +208,10 @@ void * mujthread(void *ptr) {
           }
           if(mytbl == -1) { // first run, open file
             ptr_myfile=fopen(devpaths[devs[tbl]],"rb");
+			if(!ptr_myfile) {
+				fprintf(stderr, "error: failed to open %s (%s)\n", devpaths[devs[tbl]], strerror(errno));
+				exit(EXIT_FAILURE);
+			}
             mytbl = tbl;
           }
 
