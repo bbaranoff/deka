@@ -47,7 +47,7 @@ echo 'kernel void krak(global ulong *buf, ulong slices) {
 
     /* Is this slice active, i.e., non-zero? */
     if (buf[myptr + i*4] != 0) {
-      mask |= 1ULL << i;
+      ulong one = 1; mask |= one << i;
     }
 
     //mask |= (buf[myptr + i*4] != 0) << i;
@@ -288,7 +288,8 @@ echo 'for(i=0; i<64; i++) {
 
 # And ok, break once we found one. This happens only extremely rarely.
 # (yes, we could restore, update mask and continue)
-echo 'if(diff != 0xFFFFFFFFFFFFFFFFULL) {
+echo 'ulong all = 0xFFFFFFFFFFFFFFFF;
+      if(diff != all) {
         //printf("RETURN FINISH\n");
         break;
       }'
