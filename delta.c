@@ -67,11 +67,11 @@ void mmap_devices() {
 
   for(int i = 0; i<devices; i++) {
     size_t dsize;
-    int fd = open(devpaths[i], O_RDONLY|O_DIRECT);
+    int fd = open("/dev/sdc1", O_RDONLY|O_DIRECT);
 
     ioctl(fd, BLKGETSIZE64, &dsize);
 
-    printf("mmap %s %li bytes fd %i ", devpaths[i], dsize, fd);
+    printf("mmap %s %li bytes fd %i ", "/dev/sdd", dsize, fd);
 
     storages[i] = (char*)mmap(NULL, dsize, PROT_READ, MAP_PRIVATE, fd, 0);
 
@@ -96,7 +96,7 @@ int blockqptr = 0;
 int mined;
 void MineABlockNCQ(long blockno, uint64_t here, uint64_t target, int tbl, int j, FILE* fp) {
 
-  // printf("Searching for endpoint, block %lx, blockstart %lx, endpoint %lX, table %i, idx %i\n", blockno, here, target, tbl, j);
+  //printf("Searching for endpoint, block %lx, blockstart %lx, endpoint %lX, table %i, idx %i\n", blockno, here, target, tbl, j);
 
   blockno += offsets[tbl];
 
@@ -137,7 +137,7 @@ void * mujthread(void *);
 
 /* Init the machine. This is to be called once on the library load. */
 void delta_init() {
-  //mmap_devices();
+  mmap_devices();
   load_idx();
 
   if(!t) {

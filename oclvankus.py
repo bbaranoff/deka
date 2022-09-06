@@ -1,4 +1,4 @@
-#!/usr/bin/python3
+#!/usr/bin/python3.7
 
 # Oclvankus is a client/worker that computes chains.
 

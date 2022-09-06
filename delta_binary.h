@@ -86,8 +86,8 @@ uint64_t ApplyIndexFunc(uint64_t start_index, int bits)
 /* Index of blockstarts in table */
 /* The number of chains in tables generated is unknown to me. These
    index sizes have been worked out empirically... */
-int mBlockIndex[40][10227760+100000];
-uint64_t mPrimaryIndex[40][39952+1000];
+int mBlockIndex[40][10237416+100000];
+uint64_t mPrimaryIndex[40][39976+1000];
 
 int mNumBlocks[40];
 unsigned long mStepSize[40];
@@ -116,7 +116,7 @@ void load_idx() {
     /* Get file size */
     long size = ftell(fd);
     unsigned int num = (size / sizeof(uint64_t))-1;
-    fseek(fd ,0 ,SEEK_SET );
+    fseek(fd ,0 , SEEK_SET);
     size_t alloced = num*sizeof(int)+(num/256)*sizeof(int64_t);
     fprintf(stderr, "Allocated %li bytes: %i\n",alloced,idx);
 
