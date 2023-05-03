@@ -86,8 +86,8 @@ uint64_t ApplyIndexFunc(uint64_t start_index, int bits)
 /* Index of blockstarts in table */
 /* The number of chains in tables generated is unknown to me. These
    index sizes have been worked out empirically... */
-int mBlockIndex[40][10237416+100000];
-uint64_t mPrimaryIndex[40][39976+1000];
+int mBlockIndex[40][10228856+100000];
+uint64_t mPrimaryIndex[40][39756+1000];
 
 int mNumBlocks[40];
 unsigned long mStepSize[40];
@@ -205,7 +205,7 @@ void StartEndpointSearch(uint64_t end, int tbl, int j, FILE* fp) {
   uint64_t delta = (mStepSize[tbl] + mBlockIndex[tbl][bl+1])<<12;
 
 #if DEBUG_PRINT
-  printf("here: %llx bl: %llu\n", here, bl);
+  printf("here: %lx bl: %llu\n", here, bl);
 #endif
 
   // XXX 41MB block => 42991616, ble (41 * 1024 * 1024)
@@ -214,7 +214,7 @@ void StartEndpointSearch(uint64_t end, int tbl, int j, FILE* fp) {
     bl++;
     count++;
 #if DEBUG_PRINT
-    printf("here: %llx bl: %llu\n", here, bl);
+    printf("here: %lx bl: %llu\n", here, bl);
 #endif
     delta = (mStepSize[tbl] + mBlockIndex[tbl][bl+1])<<12;
   }
@@ -277,7 +277,7 @@ uint64_t CompleteEndpointSearch(const void* pDataBlock, uint64_t here,
   tmp = (tmp<<2)|bits;
 
 #if DEBUG_PRINT
-  printf("%llx %llx\n", here, tmp);
+  printf("%lx %lx\n", here, tmp);
 #endif
 
   if (here==end) {
@@ -355,7 +355,7 @@ uint64_t CompleteEndpointSearch(const void* pDataBlock, uint64_t here,
     }
     here += delta<<12;
 #if DEBUG_PRINT
-    printf("%llx %llx\n", here, index);
+    printf("%lx %lx\n", here, index);
 #endif
     if (here==end) {
       result = index;
@@ -364,7 +364,7 @@ uint64_t CompleteEndpointSearch(const void* pDataBlock, uint64_t here,
 
     if (here>end) {
 #if DEBUG_PRINT
-      printf("passed: %llx %llx\n", here, end);
+      printf("passed: %lx %lx\n", here, end);
 #endif
       break;
     }

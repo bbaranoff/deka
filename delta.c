@@ -67,7 +67,7 @@ void mmap_devices() {
 
   for(int i = 0; i<devices; i++) {
     size_t dsize;
-    int fd = open("/dev/sdc1", O_RDONLY|O_DIRECT);
+    int fd = open(devpaths[i], O_RDONLY|O_DIRECT);
 
     ioctl(fd, BLKGETSIZE64, &dsize);
 
