@@ -3,8 +3,8 @@
 wget https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-Linux-x86_64.sh
 bash Miniforge3-Linux-x86_64.sh
 source ~/.bashrc
-conda create -n py37 python=3.7
-echo "conda activate py37" >> ~/.bashrc
+conda create -n py311 python=311
+echo "conda activate py311" >> ~/.bashrc
 source ~/.bashrc
 conda install opencl
 conda install pocl
