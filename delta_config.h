@@ -42,16 +42,6 @@ const char * files[40] = {
 "/mnt1/test.idx",
 "/mnt1/test.idx",
 "/mnt1/test.idx",
-"/mnt1/test.idx",
-"/mnt1/test.idx",
-"/mnt1/test.idx",
-"/mnt1/test.idx",
-"/mnt1/test.idx",
-"/mnt1/test.idx",
-"/mnt1/test.idx",
-"/mnt1/test.idx",
-"/mnt1/test.idx",
-"/mnt1/test.idx",
 "/mnt1/test.idx"
 };
 
