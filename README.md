@@ -1,5 +1,6 @@
 # deka
 ```bash
+dd if=/dev/random of=/mnt1/test.idx bs=8 count=1
 wget https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-Linux-x86_64.sh
 bash Miniforge3-Linux-x86_64.sh
 source ~/.bashrc
