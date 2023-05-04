@@ -5,9 +5,9 @@ bash Miniforge3-Linux-x86_64.sh
 source ~/.bashrc
 conda create -n py37 python=3.7
 echo "conda activate py37" >> ~/.bashrc
-pip install pyopencl
-pip install pocl
 source ~/.bashrc
+conda install opencl
+conda install pocl
 cd deka
 nano delta_config.h
 ```
