@@ -1,5 +1,5 @@
 CC = gcc
-SWIG = swig3.0
+SWIG = swig4.0
 
 CFLAGS = -Wall -lm -std=gnu99 -O3 -lpthread -g -ggdb3
 
@@ -13,7 +13,7 @@ d-swig:
 	$(SWIG) -python delta.i
 
 d-wrap: d-swig
-	 $(CC) $(CFLAGS) -c -fpic delta.c delta_wrap.c -I/root/miniforge3/envs/py37/include/python3.7m
+	 $(CC) $(CFLAGS) -c -fpic delta.c delta_wrap.c -I/root/miniforge3/envs/py311/include/python3.11
 
 d-so: d-wrap
 	$(CC) -shared delta.o delta_wrap.o -o _delta.so
@@ -24,7 +24,7 @@ v-swig:
 	$(SWIG) -python libvankus.i
 
 v-wrap: v-swig
-	 $(CC) $(CFLAGS) -c -fpic libvankus.c libvankus_wrap.c -I/root/miniforge3/envs/py37/include/python3.7m
+	 $(CC) $(CFLAGS) -c -fpic libvankus.c libvankus_wrap.c -I/root/miniforge3/envs/py311/include/python3.11
 
 v-so: v-wrap
 	$(CC) -shared libvankus.o libvankus_wrap.o -o _libvankus.so
