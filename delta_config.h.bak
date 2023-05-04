@@ -96,7 +96,7 @@ const uint64_t offsets[40] = {
 
 /* Path to devices (or files) where the tables are stored. */
 const char * devpaths[2] = {
-"/dev/sdb4","/dev/null"
+"/dev/sdb4","/dev/random"
 };
 
 /* Which table has been stored on which device. E.g. "2" means that the table

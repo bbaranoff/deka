@@ -102,10 +102,10 @@ void MineABlockNCQ(long blockno, uint64_t here, uint64_t target, int tbl, int j,
 
   // compute block address in memory
   int64_t a = blockno*4096;
-  //char * maddr = storages[devs[tbl]] + a;
+  char * maddr = storages[devs[tbl]] + a;
 
   char * scratch = malloc(4096);
-  //memcpy(scratch, maddr, 4096);
+  memcpy(scratch, maddr, 4096);
   fseek(fp, a, SEEK_SET);
   fread(scratch, 4096, 1, fp);
 
@@ -144,13 +144,13 @@ void delta_init() {
     t = calloc(numt, sizeof(tr));
   }
 
-  //printf("Erecting barrier\n");
-  //pthread_barrier_init(&barrier, NULL, numt);
+  printf("Erecting barrier\n");
+  pthread_barrier_init(&barrier, NULL, numt);
 
   printf("Creating threads\n");
 
   for(int i = 0; i<numt; i++) {
-    //pthread_join(t[i].thr, NULL);
+    pthread_join(t[i].thr, NULL);
     pthread_t thr;
     t[i].tid = i;
 
@@ -175,9 +175,9 @@ int qrun = 0;
 
 void * mujthread(void *ptr) {
   tr * ctx = (tr*)ptr;
-  //printf("Thread %i, range %i %i, is waiting on barrier\n", ctx->tid, ctx->start, ctx->stop);
+  printf("Thread %i, range %i %i, is waiting on barrier\n", ctx->tid, ctx->start, ctx->stop);
 
-  //pthread_barrier_wait(&barrier);
+  pthread_barrier_wait(&barrier);
 
   int mytbl = -1;
 
@@ -186,9 +186,9 @@ void * mujthread(void *ptr) {
   int qpb = 0;
 
   while(1) {
-    //printf("Thread %i, range %i %i, waiting on barrier\n", ctx->tid, ctx->start, ctx->stop);
-    //pthread_barrier_wait(&barrier);
-    //printf("Thread %i, range %i %i, passed the barrier\n", ctx->tid, ctx->start, ctx->stop);
+    printf("Thread %i, range %i %i, waiting on barrier\n", ctx->tid, ctx->start, ctx->stop);
+    pthread_barrier_wait(&barrier);
+    printf("Thread %i, range %i %i, passed the barrier\n", ctx->tid, ctx->start, ctx->stop);
 
     while(qrun == qpb) { // hope we have atomic 4B assignments, otherwise this will terribly fail
       poll(NULL, 0, 1); // XXX I don't know how to use barriers without this
@@ -239,10 +239,10 @@ void * mujthread(void *ptr) {
 
 void ncq_submit(char * cbuf, int size) {
 
-  /*FILE *ptr_myfile;
+  FILE *ptr_myfile;
   ptr_myfile=fopen("burst.bin","wb");
   fwrite(cbuf, size, 1, ptr_myfile);
-  fclose(ptr_myfile);*/
+  fclose(ptr_myfile);
 
   return;
 }
@@ -257,12 +257,12 @@ void ncq_read(char * cbuf, int size) {
   fragments = (uint64_t *)cbuf;
 
   qrun++;
-  //printf("Destroying barrier\n");
-  //pthread_barrier_destroy(&barrier);
+  printf("Destroying barrier\n");
+  pthread_barrier_destroy(&barrier);
 
   int be = 0;
   while(1) {
-    /*if(be == 0) {
+    if(be == 0) {
       int allr = 1;
       for(int i = 0; i<numt; i++) {
         if(t[i].bp != qrun) {
@@ -274,9 +274,9 @@ void ncq_read(char * cbuf, int size) {
         pthread_barrier_init(&barrier, NULL, numt);
         be = 1;
       }
-    }*/
+    }
     pthread_mutex_lock(&dmutex);
-    //printf("jobs: %i\n", jobs);
+    printf("jobs: %i\n", jobs);
     if(jobs>=16320) {
       break;
     }
@@ -306,18 +306,18 @@ int main() {
   fread(scb, 130560, 1, ptr_myfile);
   fclose(ptr_myfile);
 
-  /*for(int i = 0; i<16320; i++) {
+  for(int i = 0; i<16320; i++) {
     scb[i] = random();
-  }*/
+  }
 
   printf("init done, run!\n");
 
   ncq_read((char*)scb, 8*16320);
 
-  /*for(int i = 0; i<16320; i++) {
+  for(int i = 0; i<16320; i++) {
     ble = scb[i];
-    printf("%x", ble&0x1);
-  }*/
+    printf("%lx", ble&0x1);
+  }
 
   return 0;
 
