@@ -146,7 +146,7 @@ def put_cracked():
 
   if n >= 0:
 
-    s = buf.tostring()
+    s = buf.tobytes()
     pieces = s.split()
 
     if pieces[0] == b'Found':
@@ -265,7 +265,7 @@ def krak():
   x = time.time()
 
   a_dev = cl.Buffer(ctx, cl.mem_flags.READ_ONLY | cl.mem_flags.COPY_HOST_PTR, hostbuf=clblob)
-  event = prg.krak(cmdq, kernelstoe, None, a_dev, s)
+  event = krak_kernel(cmdq, kernelstoe, None, a_dev, s)
   event.wait()
  
   # copy the output from the context to the Python process
@@ -305,6 +305,11 @@ SRC = ''.join(f.readlines())
 f.close()
 
 prg = cl.Program(ctx, SRC).build()
+
+# FIX: recuperer le kernel UNE seule fois (sinon pyopencl en recree un a chaque
+# lancement -> fuite de ressources GPU -> CUDA_ERROR_LAUNCH_OUT_OF_RESOURCES et
+# degradation apres le 1er crack). cf. warning RepeatedKernelRetrieval.
+krak_kernel = cl.Kernel(prg, "krak")
 
 
 # Start processing

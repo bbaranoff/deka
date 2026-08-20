@@ -87,7 +87,7 @@ uint64_t ApplyIndexFunc(uint64_t start_index, int bits)
 /* The number of chains in tables generated is unknown to me. These
    index sizes have been worked out empirically... */
 int mBlockIndex[40][10228856+100000];
-uint64_t mPrimaryIndex[40][39756+1000];
+uint64_t mPrimaryIndex[40][39977+1000];
 
 int mNumBlocks[40];
 unsigned long mStepSize[40];

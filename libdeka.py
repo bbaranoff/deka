@@ -38,7 +38,7 @@ def getdata(req, remaining):
   d = b''
 
   while remaining > 0:
-    r = req.recv(max(remaining, 4096))
+    r = req.recv(min(remaining, 4096))   # FIX: min, pas max -> ne jamais sur-lire au-dela du blob (desync protocole)
     remaining -= len(r)
     d += r
 

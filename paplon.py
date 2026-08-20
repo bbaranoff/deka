@@ -148,9 +148,12 @@ def rq_putdps(req, header):
   saveblob("%i-dps"%jobnum, payload)
 
   lock.acquire()
-  jobs[jobnum].blob = payload
-  jobs[jobnum].stage = "endpoints"
-  lock.release()
+  try:
+    if jobnum in jobs:
+      jobs[jobnum].blob = payload
+      jobs[jobnum].stage = "endpoints"
+  finally:
+    lock.release()
 
 def rq_getdps(req, header):
   """
@@ -181,9 +184,12 @@ def rq_putstart(req, header):
   saveblob("%i-start"%jobnum, payload)
 
   lock.acquire()
-  jobs[jobnum].blob = payload
-  jobs[jobnum].stage = "startpoints"
-  lock.release()
+  try:
+    if jobnum in jobs:
+      jobs[jobnum].blob = payload
+      jobs[jobnum].stage = "startpoints"
+  finally:
+    lock.release()
 
 def rq_getstart(req, header):
   """
@@ -218,14 +224,18 @@ def rq_finished(req, header):
   Receive message that a job has been finished
   """
   jobnum = int(header.split()[1])
-  jobs[jobnum].stage = "finished"
-
-  for q in reportqs:
-    q.put("crack #%i took %i msec\r\n"%(jobnum, (time.time() - jobs[jobnum].time) * 1000))
 
   lock.acquire()
-  del(jobs[jobnum])
-  lock.release()
+  try:
+    job = jobs.pop(jobnum, None)   # recupere ET supprime atomiquement, None si deja fini
+    if job is not None:
+      job.stage = "finished"
+  finally:
+    lock.release()
+
+  if job is not None:
+    for q in reportqs:
+      q.put("crack #%i took %i msec\r\n"%(jobnum, (time.time() - job.time) * 1000))
 
 def rq_stats(req, header):
   """
