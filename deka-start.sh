@@ -86,6 +86,7 @@ monter /dev/tables/31_40 /mnt3
 cd "$DIR" || exit 1
 for w in paplon.py oclvankus.py delta_client.py; do
     [ -f "$w" ] || { echo "worker absent: $w"; continue; }
+    sleep 2
     echo "lancement: $PY $DIR/$w"
     "$PY" "$DIR/$w" >>"/var/log/deka-${w%.py}.log" 2>&1 &
     echo "  pid $!"
