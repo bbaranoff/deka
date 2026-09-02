@@ -2,7 +2,7 @@
 # =============================================================================
 # deka-start.sh - montage des tables deka et lancement des workers.
 #
-# Demarre seul via deka.service, ou a la main :
+# Lance par l icone deka (via pkexec), ou a la main :
 #     sudo /root/deka/deka-start.sh
 #
 # Ce que fait ce script, dans l ordre qui compte :
