@@ -3,7 +3,8 @@
 # deka-start.sh - montage des tables deka et lancement des workers.
 #
 # Lance par l icone deka (via pkexec), ou a la main :
-#     sudo /root/deka/deka-start.sh
+#     sudo /root/deka/deka-start.sh            demarre (montages + workers)
+#     sudo /root/deka/deka-start.sh --stop     arrete (workers + demontages)
 #
 # Ce que fait ce script, dans l ordre qui compte :
 #   1. vgchange -ay : active le groupe de volumes, sans quoi /dev/tables/*
@@ -16,10 +17,35 @@ set -u
 
 DIR="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)"
 LOG=/var/log/deka.log
-exec >>"$LOG" 2>&1
-echo "=== $(date -Is) deka-start ==="
+# Sortie a l ECRAN, et copie dans le log (tee) : lance a la main comme par
+# l icone, on veut VOIR ce qui se passe (montages, PID des workers), pas le
+# chercher dans un fichier. Le log reste, pour retrouver un lancement passe.
+exec > >(tee -a "$LOG") 2>&1
 
 [ "$(id -u)" -eq 0 ] || { echo "root requis : sudo $0"; exit 1; }
+
+# ── --stop : l inverse exact du demarrage ────────────────────────────────────
+# Tue les workers (par leur CHEMIN, pour ne toucher qu eux), demonte les quatre
+# tables, puis desactive le groupe LVM 'tables'. Rejouable : ce qui est deja
+# arrete/demonte est signale, pas une erreur.
+if [ "${1:-}" = "--stop" ] || [ "${1:-}" = "stop" ]; then
+    echo "=== $(date -Is) deka-stop ==="
+    for w in paplon.py oclvankus.py delta_client.py; do
+        if pkill -f "$DIR/$w" 2>/dev/null; then echo "arrete: $w"; else echo "(pas en cours: $w)"; fi
+    done
+    for pt in /mnt /mnt1 /mnt2 /mnt3; do
+        if mountpoint -q "$pt" 2>/dev/null; then
+            umount "$pt" && echo "demonte: $pt" || echo "ECHEC demontage: $pt (occupe ?)"
+        else
+            echo "non monte: $pt"
+        fi
+    done
+    vgchange -an tables 2>/dev/null && echo "groupe 'tables' desactive" || echo "(groupe 'tables' absent ou deja inactif)"
+    echo "deka-stop termine."
+    exit 0
+fi
+
+echo "=== $(date -Is) deka-start ==="
 
 # python3.7 est le shebang des workers ; on le prend s il est la, python3 sinon.
 PY="$(command -v python3.7 || command -v python3)"
