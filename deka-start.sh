@@ -97,6 +97,20 @@ monter /dev/tables/31_40 /mnt3
 # Lances en arriere-plan depuis le repertoire du script (import delta /
 # delta.pyc). Leur sortie va dans un log par worker, pas dans celui-ci.
 cd "$DIR" || exit 1
+
+# Le kernel OpenCL (slice.c) est genere depuis genkernel32.sh : oclvankus.py le
+# lit au demarrage (cl.Program(... slice.c)). On le (re)genere ici pour qu il
+# soit toujours a jour avant de lancer le worker.
+if [ -f genkernel32.sh ]; then
+    if bash genkernel32.sh > slice.c; then
+        echo "genere: slice.c ($(wc -l < slice.c) lignes)"
+    else
+        echo "ECHEC generation slice.c (genkernel32.sh)"
+    fi
+else
+    echo "genkernel32.sh absent - slice.c non regenere"
+fi
+
 for w in paplon.py oclvankus.py delta_client.py; do
     [ -f "$w" ] || { echo "worker absent: $w"; continue; }
     sleep 2
