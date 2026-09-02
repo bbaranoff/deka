@@ -15,12 +15,32 @@ import libvankus
 from vankusconf import mytables, HOST, PORT, kernels, slices
 
 mf = cl.mem_flags
-# just some context... You can define it with environment variable (you will be asked on first run)
-ctx = cl.create_some_context()
 
-#platform = cl.get_platforms()
-#my_gpu_devices = platform[0].get_devices(device_type=cl.device_type.CPU)
-#ctx = cl.Context(devices=my_gpu_devices)
+# --- Selection automatique du GPU NVIDIA ------------------------------------
+# Lance par deka-start.sh (via pkexec), on n a pas de terminal interactif :
+# create_some_context() poserait une question et bloquerait. On choisit donc
+# nous-memes le premier GPU NVIDIA (RTX 4090 ici) et on retombe, dans l ordre,
+# sur n importe quel GPU puis n importe quel device si NVIDIA manque.
+# Forcable a la main via PYOPENCL_CTX (ex: PYOPENCL_CTX=0) qui court-circuite tout.
+def _pick_nvidia_context():
+    if os.environ.get("PYOPENCL_CTX"):
+        return cl.create_some_context(interactive=False)
+    gpus, nvidia = [], []
+    for plat in cl.get_platforms():
+        is_nv = "nvidia" in (plat.vendor + plat.name).lower()
+        for dev in plat.get_devices():
+            if dev.type & cl.device_type.GPU:
+                gpus.append(dev)
+                if is_nv or "nvidia" in (dev.vendor + dev.name).lower():
+                    nvidia.append(dev)
+    chosen = nvidia or gpus
+    if not chosen:
+        raise RuntimeError("aucun device OpenCL GPU trouve")
+    dev = chosen[0]
+    print("OpenCL device: %s (%s)" % (dev.name, dev.vendor))
+    return cl.Context(devices=[dev])
+
+ctx = _pick_nvidia_context()
 cmdq = cl.CommandQueue(ctx)
 
 # how many colors are there in each table

@@ -47,9 +47,22 @@ fi
 
 echo "=== $(date -Is) deka-start ==="
 
-# python3.7 est le shebang des workers ; on le prend s il est la, python3 sinon.
-PY="$(command -v python3.7 || command -v python3)"
+# Le venv /root/.env porte pyopencl (et gnuradio/grgsm) : c est LUI qu il faut,
+# pas le python systeme. Sous pkexec/sudo le PATH est nettoye, /root/.env/bin n y
+# est jamais - on ne compte donc pas sur "activate" pour trouver l interpreteur,
+# on le nomme par son chemin. L activation reste utile pour les binaires du venv
+# (grgsm_*, uhd_*) qu un worker lancerait en sous-processus.
+VENV=/root/.env
+if [ -x "$VENV/bin/python3" ]; then
+    # shellcheck disable=SC1091
+    source "$VENV/bin/activate"
+    PY="$VENV/bin/python3"
+else
+    echo "ATTENTION: venv $VENV absent - repli sur le python systeme (pas de pyopencl)"
+    PY="$(command -v python3.7 || command -v python3)"
+fi
 [ -n "$PY" ] || { echo "aucun python3 trouve"; exit 1; }
+echo "python: $PY"
 
 # ── 1. Activation LVM ────────────────────────────────────────────────────────
 # Non fatal : si le groupe est deja actif, vgchange rend 0 et le dit ; s il
