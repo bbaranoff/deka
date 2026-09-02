@@ -100,13 +100,33 @@ def network_thr():
 def master_connect():
   global sock
 
-  sock.connect((HOST, PORT))
+  # Lance par deka-start, oclvankus peut demarrer avant que paplon (le master)
+  # n ait ouvert son port : un connect() sec echouerait en "connection refused"
+  # et tuerait le worker. On reessaie donc pendant ~30 s avant d abandonner.
+  deadline = time.time() + 30
+  while True:
+    try:
+      sock.connect((HOST, PORT))
+      return
+    except (ConnectionRefusedError, OSError) as e:
+      if time.time() >= deadline:
+        raise
+      print("master %s:%s pas encore la (%s), nouvel essai..." % (HOST, PORT, e))
+      sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+      time.sleep(1)
 
 # Ask our master for keystream to crack
 def get_keystream():
   sock.sendall(bytes("getkeystream\r\n", "ascii"))
 
   l = getline(sock)
+
+  # Master pas encore pret (reponse vide) : on n insiste pas ce tour-ci plutot
+  # que de crasher le thread reseau sur un None.split(). Il reste vivant et
+  # reessaie au cycle suivant - indispensable quand deka-start lance paplon et
+  # oclvankus quasi en meme temps.
+  if l is None:
+    return False
 
   jobnum = int(l.split()[0])
 
@@ -125,6 +145,9 @@ def get_startpoints():
   sock.sendall(bytes("getstart\r\n", "ascii"))
 
   l = getline(sock)
+
+  if l is None:
+    return False
 
   jobnum = int(l.split()[0])
 

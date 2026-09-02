@@ -111,11 +111,27 @@ else
     echo "genkernel32.sh absent - slice.c non regenere"
 fi
 
+# ── Nettoyage des anciens workers ────────────────────────────────────────────
+# Un worker d un lancement precedent peut trainer (voire etre bloque et tenir le
+# GPU, cf. deadlock futex). On les tue par leur CHEMIN (pour ne toucher qu eux),
+# TERM d abord, puis KILL de secours pour ceux qui ne repondent plus.
+for w in paplon.py oclvankus.py delta_client.py; do
+    if pkill -f "$DIR/$w" 2>/dev/null; then echo "ancien arrete: $w"; fi
+done
+sleep 2
+for w in paplon.py oclvankus.py delta_client.py; do
+    if pkill -9 -f "$DIR/$w" 2>/dev/null; then echo "ancien force (KILL): $w"; fi
+done
+
 for w in paplon.py oclvankus.py delta_client.py; do
     [ -f "$w" ] || { echo "worker absent: $w"; continue; }
     sleep 2
     echo "lancement: $PY $DIR/$w"
-    "$PY" "$DIR/$w" >>"/var/log/deka-${w%.py}.log" 2>&1 &
+    # -u : sortie NON tamponnee. Sans lui, Python ecrivant dans un fichier (et
+    # non un terminal) bufferise par blocs de ~8 Ko : le log semble fige alors
+    # que le worker tourne. Avec -u, les "free slots" defilent en direct, comme
+    # avec "python oclvankus.py" dans un terminal (tail -f /var/log/deka-*.log).
+    "$PY" -u "$DIR/$w" >>"/var/log/deka-${w%.py}.log" 2>&1 &
     echo "  pid $!"
 done
 
