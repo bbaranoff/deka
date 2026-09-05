@@ -13,7 +13,7 @@ d-swig:
 	$(SWIG) -python delta.i
 
 d-wrap: d-swig
-	 $(CC) $(CFLAGS) -c -fpic delta.c delta_wrap.c -I/root/.env/include/python3.12/
+	 $(CC) $(CFLAGS) -c -fpic delta.c delta_wrap.c -I/usr/include/python3.12
 
 d-so: d-wrap
 	$(CC) -shared delta.o delta_wrap.o -o _delta.so
@@ -24,7 +24,7 @@ v-swig:
 	$(SWIG) -python libvankus.i
 
 v-wrap: v-swig
-	 $(CC) $(CFLAGS) -c -fpic libvankus.c libvankus_wrap.c -I/root/.env/include/python3.12/
+	 $(CC) $(CFLAGS) -c -fpic libvankus.c libvankus_wrap.c -I/usr/include/python3.12
 
 v-so: v-wrap
 	$(CC) -shared libvankus.o libvankus_wrap.o -o _libvankus.so
