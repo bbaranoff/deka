@@ -1,7 +1,7 @@
 #!/bin/bash
 # =============================================================================
 # deka-toy-start.sh - clone de deka-start.sh : seul le dernier worker change
-# (toy-delta-client.py au lieu de delta_client.py), et crack_toy.py build est
+# (delta_toy_client.py au lieu de delta_client.py), et crack_toy.py build est
 # lance avant les workers pour que toy_table.tsv existe.
 #
 # Lance par l icone deka toy (via pkexec), ou a la main :
@@ -16,7 +16,7 @@
 #   3. crack_toy.py build : genere toy_table.tsv s il manque (65536 entrees,
 #      RAND=0, Ki connu sauf 2 octets - remplace les tables de 4 To).
 #   4. les trois workers python, depuis le repertoire du script : paplon.py,
-#      oclvankus.py, puis toy-delta-client.py (au lieu de delta_client.py).
+#      oclvankus.py, puis delta_toy_client.py (au lieu de delta_client.py).
 # =============================================================================
 set -u
 
@@ -35,7 +35,10 @@ exec > >(tee -a "$LOG") 2>&1
 # arrete/demonte est signale, pas une erreur.
 if [ "${1:-}" = "--stop" ] || [ "${1:-}" = "stop" ]; then
     echo "=== $(date -Is) deka-toy-stop ==="
-    for w in paplon.py oclvankus.py toy-delta-client.py; do
+    # delta_client.py (le VRAI, cf. deka-start.sh) est tue lui aussi : deux
+    # clients (lui + delta_toy_client.py) sur le meme paplon.py se marchent
+    # dessus et cassent les deux.
+    for w in paplon.py oclvankus.py delta_client.py delta_toy_client.py; do
         if pkill -f "$DIR/$w" 2>/dev/null; then echo "arrete: $w"; else echo "(pas en cours: $w)"; fi
     done
     for pt in /mnt /mnt1 /mnt2 /mnt3; do
@@ -116,7 +119,7 @@ else
     echo "genkernel32.sh absent - slice.c non regenere"
 fi
 
-# crack_toy.py build : toy_table.tsv doit exister AVANT toy-delta-client.py
+# crack_toy.py build : toy_table.tsv doit exister AVANT delta_toy_client.py
 # (RAND=0, Ki connu sauf 2 octets - remplace les tables de 4 To). Rejouable :
 # saute si deja construite.
 if [ -f crack_toy.py ]; then
@@ -135,15 +138,20 @@ fi
 # Un worker d un lancement precedent peut trainer (voire etre bloque et tenir le
 # GPU, cf. deadlock futex). On les tue par leur CHEMIN (pour ne toucher qu eux),
 # TERM d abord, puis KILL de secours pour ceux qui ne repondent plus.
-for w in paplon.py oclvankus.py toy-delta-client.py; do
+#
+# delta_client.py (le VRAI, lance par deka-start.sh) est tue ICI AUSSI : s il
+# reste en vie a cote de delta_toy_client.py, les deux clients se disputent le
+# meme paplon.py (meme HOST:PORT, vankusconf.py) et deka-toy ne repond plus
+# correctement - delta_toy_client.py doit etre seul client de CE paplon.py.
+for w in paplon.py oclvankus.py delta_client.py delta_toy_client.py; do
     if pkill -f "$DIR/$w" 2>/dev/null; then echo "ancien arrete: $w"; fi
 done
 sleep 2
-for w in paplon.py oclvankus.py toy-delta-client.py; do
+for w in paplon.py oclvankus.py delta_client.py delta_toy_client.py; do
     if pkill -9 -f "$DIR/$w" 2>/dev/null; then echo "ancien force (KILL): $w"; fi
 done
 
-for w in paplon.py oclvankus.py toy-delta-client.py; do
+for w in paplon.py oclvankus.py delta_toy_client.py; do
     [ -f "$w" ] || { echo "worker absent: $w"; continue; }
     sleep 2
     echo "lancement: $PY $DIR/$w"
