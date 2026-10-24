@@ -69,6 +69,44 @@ echo "python: $PY"
 # echoue, les montages plus bas le signaleront table par table.
 vgchange -ay || echo "ATTENTION: vgchange -ay a echoue (groupe absent ?)"
 
+# ── 1bis. Rafraichissement des mappings device-mapper ────────────────────────
+# PANNE VECUE : apres un reboot, l enumeration SCSI peut rebattre les lettres de
+# disque (sdc <-> sdd : dmesg plein de DID_NO_CONNECT / "Synchronize Cache
+# failed"). LVM relit bien ses metadonnees sur le nouveau disque, MAIS les
+# tables dm DEJA ACTIVES restent figees sur l ANCIEN major:minor - qui n existe
+# plus. Resultat : toute lecture de /dev/indexes/lvol* rend "Input/output
+# error" (dmesg : "Buffer I/O error on dev dm-N"), alors que le disque brut lit
+# parfaitement. Les lookups delta ne trouvent alors RIEN, oclvankus tourne a
+# vide ("40 free slots") et aucun Kc n est jamais casse - deka "marche plus"
+# sans la moindre erreur visible cote workers.
+#
+# 'vgchange -ay' NE corrige PAS ca : un volume deja actif n est pas reconstruit,
+# donc un simple redemarrage des workers ne repare jamais rien. Il faut
+# '--refresh', qui suspend/reprend chaque LV et RECHARGE sa table dm depuis les
+# metadonnees courantes -> le linear target repointe sur le bon disque, quel que
+# soit son nouveau nom. Non destructif, sur meme LV ouvert (mmap d un worker) ou
+# systeme monte (suspend/resume). On le fait a CHAQUE demarrage : si rien n a
+# bouge c est un quasi no-op, et le jour ou les disques bougent, c est repare
+# tout seul.
+for vg in indexes tables; do
+    if vgs "$vg" >/dev/null 2>&1; then
+        vgchange --refresh "$vg" >/dev/null 2>&1 \
+            && echo "dm rafraichi: $vg" \
+            || echo "ATTENTION: refresh dm $vg a echoue"
+    fi
+done
+
+# Verification : les volumes d index doivent etre LISIBLES. On lit 4 Ko au debut
+# de chacun ; un echec ici est LA panne ci-dessus (ou un vrai disque mort) et
+# condamne tous les cracks - on le signale fort plutot que de laisser deka
+# tourner a vide en silence.
+for dev in /dev/indexes/lvol*; do
+    [ -e "$dev" ] || continue
+    if ! dd if="$dev" bs=4096 count=1 of=/dev/null >/dev/null 2>&1; then
+        echo "ILLISIBLE: $dev (I/O error) - index KO, les cracks echoueront"
+    fi
+done
+
 # ── 2. Points de montage puis volumes ────────────────────────────────────────
 # /mnt existe deja sur tout systeme ; on cree les trois autres. Chaque montage
 # est saute si le point est deja monte - le script est rejouable a volonte.

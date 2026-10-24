@@ -13,4 +13,3 @@ libvankus_wrap.o
 slice.c
 *.log
 bursts/*
-toy_table.tsv
