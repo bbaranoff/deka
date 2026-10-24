@@ -31,7 +31,7 @@ exec > >(tee -a "$LOG") 2>&1
 if [ "${1:-}" = "--stop" ] || [ "${1:-}" = "stop" ]; then
     echo "=== $(date -Is) deka-stop ==="
     for w in paplon.py oclvankus.py delta_client.py; do
-        if pkill -f "$DIR/$w" 2>/dev/null; then echo "arrete: $w"; else echo "(pas en cours: $w)"; fi
+        if pkill -f "[ /]$w" 2>/dev/null; then echo "arrete: $w"; else echo "(pas en cours: $w)"; fi
     done
     for pt in /mnt /mnt1 /mnt2 /mnt3; do
         if mountpoint -q "$pt" 2>/dev/null; then
@@ -116,11 +116,11 @@ fi
 # GPU, cf. deadlock futex). On les tue par leur CHEMIN (pour ne toucher qu eux),
 # TERM d abord, puis KILL de secours pour ceux qui ne repondent plus.
 for w in paplon.py oclvankus.py delta_client.py; do
-    if pkill -f "$DIR/$w" 2>/dev/null; then echo "ancien arrete: $w"; fi
+    if pkill -f "[ /]$w" 2>/dev/null; then echo "ancien arrete: $w"; fi
 done
 sleep 2
 for w in paplon.py oclvankus.py delta_client.py; do
-    if pkill -9 -f "$DIR/$w" 2>/dev/null; then echo "ancien force (KILL): $w"; fi
+    if pkill -9 -f "[ /]$w" 2>/dev/null; then echo "ancien force (KILL): $w"; fi
 done
 
 for w in paplon.py oclvankus.py delta_client.py; do
@@ -138,8 +138,10 @@ for w in paplon.py oclvankus.py delta_client.py; do
     # tue tout son groupe de processus (os.killpg). Un simple '&' laisse les
     # workers dans CE groupe : ils mouraient avec la fenetre. setsid les met
     # dans leur propre session (hors du groupe tue), </dev/null les detache du
-    # pty du lanceur. Au prochain demarrage/--stop, pkill -f "$DIR/$w" les
-    # retrouve quand meme (il matche le chemin, pas le groupe).
+    # pty du lanceur. Au prochain demarrage/--stop, pkill -f "[ /]$w" les
+    # retrouve quand meme : le motif matche le NOM du worker precede d un
+    # espace ou d un '/', donc aussi bien "python paplon.py" (chemin relatif)
+    # que "/root/deka/paplon.py" (chemin absolu) - pas le groupe de processus.
     setsid "$PY" -u "$DIR/$w" >>"/var/log/deka-${w%.py}.log" 2>&1 < /dev/null &
     echo "  pid $!"
 done
