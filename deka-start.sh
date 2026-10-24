@@ -59,7 +59,7 @@ if [ -x "$VENV/bin/python3" ]; then
     PY="$VENV/bin/python3"
 else
     echo "ATTENTION: venv $VENV absent - repli sur le python systeme (pas de pyopencl)"
-    PY="$(command -v python3.7 || command -v python3)"
+    PY="$(command -v python3.7 || command -v python3 || true)"
 fi
 [ -n "$PY" ] || { echo "aucun python3 trouve"; exit 1; }
 echo "python: $PY"
