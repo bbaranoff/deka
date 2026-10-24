@@ -24,15 +24,28 @@ exec > >(tee -a "$LOG") 2>&1
 
 [ "$(id -u)" -eq 0 ] || { echo "root requis : sudo $0"; exit 1; }
 
-# ── --stop : l inverse exact du demarrage ────────────────────────────────────
-# Tue les workers (par leur CHEMIN, pour ne toucher qu eux), demonte les quatre
-# tables, puis desactive le groupe LVM 'tables'. Rejouable : ce qui est deja
-# arrete/demonte est signale, pas une erreur.
-if [ "${1:-}" = "--stop" ] || [ "${1:-}" = "stop" ]; then
-    echo "=== $(date -Is) deka-stop ==="
+# ── Arret (workers + demontages), factorise ──────────────────────────────────
+# Utilise par '--stop' ET par le demarrage (--stop implicite, voir plus bas).
+# Rejouable : ce qui est deja arrete/demonte est signale, pas une erreur.
+
+# Tue les workers par leur CHEMIN (motif "[ /]$w", pour ne toucher qu eux) :
+# TERM d abord, puis KILL de secours pour ceux qui ne repondent plus (un worker
+# bloque peut tenir le GPU, cf. deadlock futex, ou garder un mount occupe).
+arret_workers() {
     for w in paplon.py oclvankus.py delta_client.py; do
         if pkill -f "[ /]$w" 2>/dev/null; then echo "arrete: $w"; else echo "(pas en cours: $w)"; fi
     done
+    sleep 2
+    for w in paplon.py oclvankus.py delta_client.py; do
+        if pkill -9 -f "[ /]$w" 2>/dev/null; then echo "force (KILL): $w"; fi
+    done
+}
+
+# Arret complet : workers d abord (sinon le mount reste occupe et umount
+# echoue), puis demontage des quatre tables, puis desactivation du groupe LVM
+# 'tables'.
+do_stop() {
+    arret_workers
     for pt in /mnt /mnt1 /mnt2 /mnt3; do
         if mountpoint -q "$pt" 2>/dev/null; then
             umount "$pt" && echo "demonte: $pt" || echo "ECHEC demontage: $pt (occupe ?)"
@@ -41,11 +54,27 @@ if [ "${1:-}" = "--stop" ] || [ "${1:-}" = "stop" ]; then
         fi
     done
     vgchange -an tables 2>/dev/null && echo "groupe 'tables' desactive" || echo "(groupe 'tables' absent ou deja inactif)"
+}
+
+# ── --stop : l inverse exact du demarrage ────────────────────────────────────
+if [ "${1:-}" = "--stop" ] || [ "${1:-}" = "stop" ]; then
+    echo "=== $(date -Is) deka-stop ==="
+    do_stop
     echo "deka-stop termine."
     exit 0
 fi
 
 echo "=== $(date -Is) deka-start ==="
+
+# ── --stop implicite : on repart toujours d un etat propre ───────────────────
+# PANNE VECUE : relance sans arret prealable, delta_client demarrait mal sur des
+# tables encore montees (et des workers encore vivants) du lancement precedent -
+# "error: failed to open /dev/indexes/lvol4", lookups dans le vide. On force donc
+# un arret complet AVANT de remonter : workers tues, tables demontees, LVM
+# desactive, puis tout le demarrage ci-dessous reconstruit l etat de zero.
+echo "--- arret prealable (--stop implicite) ---"
+do_stop
+echo "--- demarrage ---"
 
 # Le venv /root/.env porte pyopencl (et gnuradio/grgsm) : c est LUI qu il faut,
 # pas le python systeme. Sous pkexec/sudo le PATH est nettoye, /root/.env/bin n y
@@ -149,18 +178,9 @@ else
     echo "genkernel32.sh absent - slice.c non regenere"
 fi
 
-# ── Nettoyage des anciens workers ────────────────────────────────────────────
-# Un worker d un lancement precedent peut trainer (voire etre bloque et tenir le
-# GPU, cf. deadlock futex). On les tue par leur CHEMIN (pour ne toucher qu eux),
-# TERM d abord, puis KILL de secours pour ceux qui ne repondent plus.
-for w in paplon.py oclvankus.py delta_client.py; do
-    if pkill -f "[ /]$w" 2>/dev/null; then echo "ancien arrete: $w"; fi
-done
-sleep 2
-for w in paplon.py oclvankus.py delta_client.py; do
-    if pkill -9 -f "[ /]$w" 2>/dev/null; then echo "ancien force (KILL): $w"; fi
-done
-
+# ── Lancement des workers ────────────────────────────────────────────────────
+# Les anciens workers ont deja ete tues par le --stop implicite en tete de
+# script ; on n a plus qu a lancer les nouveaux.
 for w in paplon.py oclvankus.py delta_client.py; do
     [ -f "$w" ] || { echo "worker absent: $w"; continue; }
     sleep 2
