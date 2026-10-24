@@ -131,7 +131,16 @@ for w in paplon.py oclvankus.py delta_client.py; do
     # non un terminal) bufferise par blocs de ~8 Ko : le log semble fige alors
     # que le worker tourne. Avec -u, les "free slots" defilent en direct, comme
     # avec "python oclvankus.py" dans un terminal (tail -f /var/log/deka-*.log).
-    "$PY" -u "$DIR/$w" >>"/var/log/deka-${w%.py}.log" 2>&1 &
+    #
+    # setsid + </dev/null : les workers DOIVENT survivre a la fermeture du
+    # lanceur. Lance par l icone (favori), ce script tourne dans la fenetre GTK
+    # osmo-gtk-run.py ; quand il se termine (statut 0) la fenetre se ferme et
+    # tue tout son groupe de processus (os.killpg). Un simple '&' laisse les
+    # workers dans CE groupe : ils mouraient avec la fenetre. setsid les met
+    # dans leur propre session (hors du groupe tue), </dev/null les detache du
+    # pty du lanceur. Au prochain demarrage/--stop, pkill -f "$DIR/$w" les
+    # retrouve quand meme (il matche le chemin, pas le groupe).
+    setsid "$PY" -u "$DIR/$w" >>"/var/log/deka-${w%.py}.log" 2>&1 < /dev/null &
     echo "  pid $!"
 done
 
