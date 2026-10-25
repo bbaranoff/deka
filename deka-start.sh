@@ -125,16 +125,50 @@ for vg in indexes tables; do
     fi
 done
 
-# Verification : les volumes d index doivent etre LISIBLES. On lit 4 Ko au debut
-# de chacun ; un echec ici est LA panne ci-dessus (ou un vrai disque mort) et
-# condamne tous les cracks - on le signale fort plutot que de laisser deka
-# tourner a vide en silence.
-for dev in /dev/indexes/lvol*; do
-    [ -e "$dev" ] || continue
-    if ! dd if="$dev" bs=4096 count=1 of=/dev/null >/dev/null 2>&1; then
-        echo "ILLISIBLE: $dev (I/O error) - index KO, les cracks echoueront"
+# Verification des index que delta_client ouvre REELLEMENT : lvol0..lvol7
+# (delta_config.h, devpaths[8]). delta les mmap et les lit en O_DIRECT ; si l un
+# manque ou est illisible, l open rend fd -1, le mmap echoue (fd -1, result
+# 0xffff...) et le worker meurt a l init - ou lit dans le vide.
+#
+# On teste le DEBUT **ET LA FIN** de chaque volume. Un test du seul debut ne voit
+# pas une table dm figee/tronquee apres rebattage SCSI : la lecture passe au
+# debut mais echoue plus loin (I/O error, ou "attempt to access beyond end of
+# device" cote noyau -> delta recoit un SIGBUS et meurt sans trace Python).
+# lvol8 existe mais n est pas dans devpaths : on ne le teste pas.
+verifier_indexes() {
+    local ko=0 i dev sz last
+    for i in 0 1 2 3 4 5 6 7; do
+        dev=/dev/indexes/lvol$i
+        if [ ! -e "$dev" ]; then
+            echo "ABSENT: $dev (index exige par delta_client)"; ko=$((ko+1)); continue
+        fi
+        sz=$(blockdev --getsize64 "$dev" 2>/dev/null || echo 0)
+        last=$(( sz/4096 - 1 ))
+        if ! dd if="$dev" bs=4096 count=1 of=/dev/null >/dev/null 2>&1; then
+            echo "ILLISIBLE (debut): $dev"; ko=$((ko+1))
+        elif [ "$last" -gt 0 ] && ! dd if="$dev" bs=4096 skip="$last" count=1 of=/dev/null >/dev/null 2>&1; then
+            echo "ILLISIBLE (fin): $dev - table dm figee/tronquee ?"; ko=$((ko+1))
+        fi
+    done
+    return "$ko"
+}
+
+# En cas d echec, --refresh a deja ete tente plus haut ; on passe au cran du
+# dessus : une reactivation COMPLETE du groupe (deactivate + activate) qui
+# DETRUIT et RECONSTRUIT entierement les tables dm depuis les metadonnees
+# courantes. Possible ici car le --stop implicite a deja tue les workers : aucun
+# LV n est ouvert (mmap), donc le 'vgchange -an' ne sera pas refuse.
+if ! verifier_indexes; then
+    echo "ATTENTION: index KO - reactivation complete du groupe 'indexes'..."
+    vgchange -an indexes >/dev/null 2>&1
+    vgchange -ay indexes >/dev/null 2>&1
+    udevadm settle 2>/dev/null || true
+    if verifier_indexes; then
+        echo "index repares (reactivation complete)."
+    else
+        echo "ECHEC: index toujours KO - delta_client va planter/lire dans le vide."
     fi
-done
+fi
 
 # ── 2. Points de montage puis volumes ────────────────────────────────────────
 # /mnt existe deja sur tout systeme ; on cree les trois autres. Chaque montage
@@ -178,30 +212,70 @@ else
     echo "genkernel32.sh absent - slice.c non regenere"
 fi
 
-# ── Lancement des workers ────────────────────────────────────────────────────
-# Les anciens workers ont deja ete tues par le --stop implicite en tete de
-# script ; on n a plus qu a lancer les nouveaux.
+# ── Lancement des workers (sous superviseur) ─────────────────────────────────
+# Les anciens workers ont deja ete tues par le --stop implicite ; on lance les
+# nouveaux. Chacun tourne sous un petit SUPERVISEUR qui le RELANCE s il meurt :
+# delta_client peut recevoir un SIGBUS en plein travail ("attempt to access
+# beyond end of device") quand une entree d index pointe au-dela du volume
+# courant - sans superviseur, deka s arretait net sur un seul mauvais job. Le
+# superviseur le repart et deka continue de cracker les jobs valides.
+#
+# GARDE-FOU anti-boucle : si un worker meurt 5 fois en se tenant moins de 60 s
+# a chaque fois, c est casse pour de bon (index incoherent avec la taille des
+# volumes, module manquant...) - on ABANDONNE en l ecrivant fort dans son log,
+# plutot que de tourner en boucle a vide.
+#
+# -u : sortie Python NON tamponnee (le log defile en direct, pas par blocs 8 Ko).
+# setsid + </dev/null : le worker survit a la fermeture de la fenetre GTK du
+# lanceur (osmo-gtk-run) qui, en se fermant, tue son propre groupe de processus.
+# setsid met le superviseur (et donc le worker) dans leur propre session.
+# pkill -f "[ /]$w" (demarrage/--stop) les retrouve quand meme : le motif matche
+# le NOM du worker precede d espace/slash, present AUSSI BIEN dans la ligne du
+# python ("$PY -u /root/deka/delta_client.py") que dans celle du superviseur
+# (bash -c ... delta_client.py) - les deux sont donc tues ensemble.
+WPIDS=""
 for w in paplon.py oclvankus.py delta_client.py; do
     [ -f "$w" ] || { echo "worker absent: $w"; continue; }
     sleep 2
-    echo "lancement: $PY $DIR/$w"
-    # -u : sortie NON tamponnee. Sans lui, Python ecrivant dans un fichier (et
-    # non un terminal) bufferise par blocs de ~8 Ko : le log semble fige alors
-    # que le worker tourne. Avec -u, les "free slots" defilent en direct, comme
-    # avec "python oclvankus.py" dans un terminal (tail -f /var/log/deka-*.log).
-    #
-    # setsid + </dev/null : les workers DOIVENT survivre a la fermeture du
-    # lanceur. Lance par l icone (favori), ce script tourne dans la fenetre GTK
-    # osmo-gtk-run.py ; quand il se termine (statut 0) la fenetre se ferme et
-    # tue tout son groupe de processus (os.killpg). Un simple '&' laisse les
-    # workers dans CE groupe : ils mouraient avec la fenetre. setsid les met
-    # dans leur propre session (hors du groupe tue), </dev/null les detache du
-    # pty du lanceur. Au prochain demarrage/--stop, pkill -f "[ /]$w" les
-    # retrouve quand meme : le motif matche le NOM du worker precede d un
-    # espace ou d un '/', donc aussi bien "python paplon.py" (chemin relatif)
-    # que "/root/deka/paplon.py" (chemin absolu) - pas le groupe de processus.
-    setsid "$PY" -u "$DIR/$w" >>"/var/log/deka-${w%.py}.log" 2>&1 < /dev/null &
-    echo "  pid $!"
+    echo "lancement (supervise): $PY $DIR/$w"
+    setsid bash -c '
+        w="$1"; py="$2"; dir="$3"; log="$4"; n=0
+        while :; do
+            t0=$(date +%s)
+            "$py" -u "$dir/$w" >>"$log" 2>&1 </dev/null
+            rc=$?
+            [ $(( $(date +%s) - t0 )) -ge 60 ] && n=0
+            n=$((n+1))
+            echo "[$(date -Is)] $w arrete (statut $rc) - relance #$n" >>"$log"
+            if [ "$n" -ge 5 ]; then
+                echo "[$(date -Is)] $w : 5 morts rapprochees, ABANDON. Si dmesg dit \"beyond end of device\" : index a regenerer pour la taille des lvol0..7." >>"$log"
+                break
+            fi
+            sleep 2
+        done
+    ' deka-sup "$w" "$PY" "$DIR" "/var/log/deka-${w%.py}.log" >/dev/null 2>&1 </dev/null &
+    echo "  superviseur pid $!"
+    WPIDS="$WPIDS $w:$!"
+done
+
+# ── Controle de demarrage ────────────────────────────────────────────────────
+# On laisse quelques secondes puis on verifie que chaque superviseur tient et
+# que le worker tourne vraiment (pgrep sur le python). Un worker qui meurt
+# AUSSITOT (import KO, index absent) est signale FORT : fini le "termine" affiche
+# par-dessus un deka mort en silence. NB: un crash plus tardif (SIGBUS sur un
+# job, 30 s+ apres) ne se voit pas ici - c est le superviseur qui le rattrape,
+# et le garde-fou qui tranche si ca se repete.
+sleep 6
+for item in $WPIDS; do
+    w=${item%%:*}; sp=${item##*:}
+    if pgrep -f "[ /]$w" >/dev/null 2>&1; then
+        echo "OK demarre: $w"
+    else
+        echo "!! $w NE TOURNE PAS (superviseur pid $sp deja a bout) :"
+        tail -n 4 "/var/log/deka-${w%.py}.log" 2>/dev/null | sed 's/^/!!   /'
+        dmh=$(dmesg 2>/dev/null | grep -i "beyond end of device" | tail -1)
+        [ -n "$dmh" ] && echo "!!   dmesg: $dmh  => index incoherent avec la taille des volumes, a regenerer"
+    fi
 done
 
 echo "deka-start termine."
